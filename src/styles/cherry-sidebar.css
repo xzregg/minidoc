@@ -1,0 +1,133 @@
+/* Cherry Markdown 侧边栏自定义样式 */
+
+/* 调整 Cherry 目录侧边栏 */
+.cherry-sidebar {
+  top: 40px !important; /* 紧贴顶部栏下方 */
+  height: calc(100vh - 40px) !important;
+  max-height: calc(100vh - 40px) !important;
+}
+
+/* 调整 cherry-flex-toc 位置 */
+.cherry-flex-toc {
+  top: calc(var(--height-toolbar) + 10px) !important;
+}
+
+/* 侧边栏容器调整 */
+.cherry-sidebar .cherry-sidebar-container {
+  height: 100% !important;
+  max-height: 100% !important;
+}
+
+/* 只保留目录,隐藏其他侧边栏内容 */
+.cherry-sidebar .cherry-sidebar-content {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 目录样式调整 */
+.cherry-toc {
+  flex: 1 !important;
+  overflow-y: auto !important;
+}
+
+/* 目录列表样式 */
+.cherry-toc-list {
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+
+/* Dark mode styles for Cherry editor */
+:root.dark .cherry-markdown {
+  background-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+
+:root.dark .cherry-sidebar {
+  background-color: #111827 !important;
+  border-left-color: #374151 !important;
+}
+
+:root.dark .cherry-toc-item a {
+  color: #9ca3af !important;
+}
+
+:root.dark .cherry-toc-item a:hover {
+  color: #f3f4f6 !important;
+}
+
+:root.dark .cherry-toc-item--active a {
+  color: #4A90E2 !important;
+}
+
+/* Dark mode for editor area */
+:root.dark .cherry-container {
+  background-color: #1f2937 !important;
+}
+
+:root.dark .cherry-text-editor {
+  color: #f3f4f6 !important;
+}
+
+/* 深色模式工具栏 */
+:root.dark .cherry-toolbar {
+  background-color: #1f2937 !important;
+  border-bottom-color: #374151 !important;
+}
+
+:root.dark .cherry-toolbar-button {
+  color: #9ca3af !important;
+}
+
+:root.dark .cherry-toolbar-button:hover {
+  color: #f3f4f6 !important;
+  background-color: #374151 !important;
+}
+
+/* 深色模式代码块 */
+:root.dark pre {
+  background-color: #111827 !important;
+}
+
+:root.dark code {
+  background-color: #374151 !important;
+  color: #f3f4f6 !important;
+}
+
+/* 深色模式表格 */
+:root.dark table {
+  background-color: #1f2937 !important;
+}
+
+:root.dark table th {
+  background-color: #374151 !important;
+  border-color: #4b5563 !important;
+}
+
+:root.dark table td {
+  border-color: #4b5563 !important;
+}
+
+/* 深色模式引用 */
+:root.dark blockquote {
+  border-left-color: #4A90E2 !important;
+  color: #9ca3af !important;
+}
+
+/* 深色模式目录面板 */
+:root.dark .cherry-flex-toc,
+:root.dark .cherry-toc-popup {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+}
+
+:root.dark .cherry-flex-toc *,
+:root.dark .cherry-toc-popup * {
+  background-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+
+:root.dark .cherry-toc-title {
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+  border-bottom-color: #374151 !important;
+}

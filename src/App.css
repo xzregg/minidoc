@@ -1,0 +1,274 @@
+@import "tailwindcss";
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+
+  color-scheme: light;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Dark mode overrides - manually defined */
+:root.dark {
+  color-scheme: dark;
+}
+
+:root.dark body {
+  background-color: #111827;
+  color: #f3f4f6;
+}
+
+:root.dark .bg-white {
+  background-color: #1f2937 !important;
+}
+
+:root.dark .bg-gray-50 {
+  background-color: #111827 !important;
+}
+
+:root.dark .bg-gray-100 {
+  background-color: #374151 !important;
+}
+
+:root.dark .bg-gray-200 {
+  background-color: #4b5563 !important;
+}
+
+:root.dark .bg-gray-800 {
+  background-color: #1f2937 !important;
+}
+
+:root.dark .text-gray-600,
+:root.dark .text-gray-700,
+:root.dark .text-gray-800,
+:root.dark .text-gray-900 {
+  color: #f3f4f6 !important;
+}
+
+:root.dark .text-gray-400,
+:root.dark .text-gray-500 {
+  color: #9ca3af !important;
+}
+
+:root.dark .border-gray-200,
+:root.dark .border-gray-300 {
+  border-color: #374151 !important;
+}
+
+:root.dark .border-gray-700 {
+  border-color: #4b5563 !important;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Dark theme scrollbar */
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
+}
+
+/* Cherry Markdown styles */
+.cherry-markdown {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.7;
+}
+
+.cherry-markdown h1,
+.cherry-markdown h2,
+.cherry-markdown h3,
+.cherry-markdown h4,
+.cherry-markdown h5,
+.cherry-markdown h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.cherry-markdown code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.9em;
+  background: #f4f4f4;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.cherry-markdown pre {
+  background: #f4f4f4;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.cherry-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.cherry-markdown blockquote {
+  border-left: 3px solid #4A90E2;
+  padding-left: 16px;
+  margin-left: 0;
+  color: #6b7280;
+}
+
+.cherry-markdown img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.cherry-markdown a {
+  color: #4A90E2;
+  text-decoration: none;
+}
+
+.cherry-markdown a:hover {
+  text-decoration: underline;
+}
+
+.cherry-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+}
+
+.cherry-markdown table th,
+.cherry-markdown table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.cherry-markdown table th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+/* Utility classes */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Prose styles for markdown preview */
+.prose {
+  color: #374151;
+  line-height: 1.75;
+}
+
+.prose h1 {
+  font-size: 2.25em;
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.2;
+}
+
+.prose h2 {
+  font-size: 1.875em;
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+}
+
+.prose h3 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.4;
+}
+
+.prose code {
+  color: #111827;
+  background-color: #f3f4f6;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+}
+
+.prose strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose blockquote {
+  border-left: 4px solid #4A90E2;
+  padding-left: 1em;
+  margin: 1.5em 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Toast animations */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
