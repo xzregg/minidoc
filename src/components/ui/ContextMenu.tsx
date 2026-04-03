@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { FiFilePlus, FiFolderPlus, FiEdit2, FiTrash2, FiCopy, FiScissors } from 'react-icons/fi';
+import { FiFilePlus, FiFolderPlus, FiEdit2, FiTrash2 } from 'react-icons/fi';
 
 export interface ContextMenuItem {
   label?: string;
