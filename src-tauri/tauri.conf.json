@@ -31,10 +31,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "minimumSystemVersion": "10.13"
+    },
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],
         "name": "Markdown",
+        "description": "Markdown Document",
         "role": "Editor",
         "mimeType": "text/markdown"
       }

@@ -58,12 +58,11 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
         <SidebarTabs width={sidebarWidth} />
         {/* 可拖动分隔条 */}
         <div
-          className={`w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors ${
-            isDragging ? 'bg-blue-500' : ''
-          }`}
+          className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors z-10"
+          style={{ minWidth: '4px' }}
           onMouseDown={handleMouseDown}
         />
-        <main className="flex-1 flex flex-col">
+        <main className="flex-1 flex flex-col min-h-0">
           {children}
         </main>
       </div>

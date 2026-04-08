@@ -105,7 +105,11 @@ export function SettingsDialog() {
               <div className="flex items-center justify-between">
                 <label className="text-sm text-gray-600 dark:text-gray-400">显示行号</label>
                 <button
-                  onClick={() => updateSettings({ showLineNumbers: !settings.showLineNumbers })}
+                  onClick={() => {
+                    const newValue = !settings.showLineNumbers;
+                    console.log('[SettingsDialog] 点击行号 toggle，目标值:', newValue);
+                    updateSettings({ showLineNumbers: newValue });
+                  }}
                   className={`w-12 h-6 rounded-full transition-colors relative ${
                     settings.showLineNumbers ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
                   }`}
@@ -118,22 +122,6 @@ export function SettingsDialog() {
                 </button>
               </div>
 
-              {/* Word Wrap */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-gray-600 dark:text-gray-400">自动换行</label>
-                <button
-                  onClick={() => updateSettings({ wordWrap: !settings.wordWrap })}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${
-                    settings.wordWrap ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      settings.wordWrap ? 'left-7' : 'left-1'
-                    }`}
-                  />
-                </button>
-              </div>
             </div>
           </section>
 

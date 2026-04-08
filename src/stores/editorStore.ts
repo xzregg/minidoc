@@ -4,7 +4,7 @@ import { useSettingsStore } from './settingsStore';
 export interface EditorOptions {
   fontSize: number;
   showLineNumbers: boolean;
-  wordWrap: boolean;
+  wordWrap: true; // 固定为 true
   theme: 'light' | 'dark';
   autoSave: boolean;
 }
@@ -23,7 +23,7 @@ interface EditorState {
 const defaultOptions: EditorOptions = {
   fontSize: 14,
   showLineNumbers: true,
-  wordWrap: false,
+  wordWrap: true, // 固定启用自动换行
   theme: 'light',
   autoSave: true,
 };
@@ -49,6 +49,7 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   syncWithSettings: () => {
     const settings = useSettingsStore.getState().settings;
+    console.log('[editorStore] syncWithSettings 读取到 settings:', settings);
     set((state) => ({
       options: {
         ...state.options,
@@ -59,5 +60,6 @@ export const useEditorStore = create<EditorState>((set) => ({
         autoSave: settings.autoSave,
       },
     }));
+    console.log('[editorStore] sync 完成后的 options:', useEditorStore.getState().options);
   },
 }));

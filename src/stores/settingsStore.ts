@@ -7,7 +7,7 @@ export interface Settings {
   autoSave: boolean;
   autoSaveInterval: number;
   showLineNumbers: boolean;
-  wordWrap: boolean;
+  wordWrap: true; // 固定为 true，不开放给用户配置
 }
 
 interface SettingsState {
@@ -22,7 +22,7 @@ const defaultSettings: Settings = {
   autoSave: true,
   autoSaveInterval: 3000,
   showLineNumbers: true,
-  wordWrap: false,
+  wordWrap: true, // 固定启用自动换行
 };
 
 // 从 localStorage 读取设置
@@ -67,26 +67,30 @@ export const useSettingsStore = create<SettingsState>((set) => {
     settings: initialSettings,
 
     updateSettings: (newSettings) => {
-    set((state) => {
-      const updatedSettings = { ...state.settings, ...newSettings };
+      // 先更新当前 store
+      set((state) => {
+        const updatedSettings = { ...state.settings, ...newSettings };
 
-      // 如果主题设置发生变化，更新 DOM 的 class
-      if (newSettings.theme && newSettings.theme !== state.settings.theme) {
-        applyThemeToDom(newSettings.theme);
-      }
+        // 如果主题设置发生变化，更新 DOM 的 class
+        if (newSettings.theme && newSettings.theme !== state.settings.theme) {
+          applyThemeToDom(newSettings.theme);
+        }
 
-      // 持久化设置到本地存储
-      localStorage.setItem('settings', JSON.stringify(updatedSettings));
+        // 持久化设置到本地存储
+        localStorage.setItem('settings', JSON.stringify(updatedSettings));
 
-      // 同步到 editorStore
+        console.log('[settingsStore] 更新后的值:', updatedSettings);
+
+        return {
+          settings: updatedSettings,
+        };
+      });
+
+      // 🔴 关键：在 set 完成后同步到 editorStore
       const editorStore = useEditorStore.getState();
+      console.log('[settingsStore] 准备同步到 editorStore');
       editorStore.syncWithSettings();
-
-      return {
-        settings: updatedSettings,
-      };
-    });
-  },
+    },
 
   toggleTheme: () => {
     set((state) => {

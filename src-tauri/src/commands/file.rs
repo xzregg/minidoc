@@ -48,8 +48,26 @@ fn should_ignore(name: &str) -> bool {
 pub async fn open_file_dialog() -> Result<String, String> {
     // 使用 Tauri 内置的文件对话框 API
     // 这个命令需要在调用时传入 app handle，这里简化处理
-    // 实际使用时应该通过 tauri-plugin-dialog 来实现
-    Err("open_file_dialog 需要在前端使用 tauri-plugin-dialog API".to_string())
+    Err("不支持".to_string())
+}
+
+/// 启动新的应用实例并打开文件
+///
+/// 使用命令行参数启动新的 minidoc-app 进程
+#[tauri::command]
+pub async fn launch_new_instance(path: String) -> Result<(), String> {
+    use std::process::Command;
+    use std::env::current_exe;
+
+    let exe_path = current_exe().map_err(|e| format!("获取应用路径失败：{}", e))?;
+
+    // 🔴 启动新进程，传入文件路径作为参数
+    Command::new(exe_path)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("启动新实例失败：{}", e))?;
+
+    Ok(())
 }
 
 /// 读取文件内容
@@ -596,4 +614,21 @@ pub async fn get_metadata(path: String) -> Result<FileInfo, String> {
         modified,
         children: None,
     })
+}
+
+/// 检查路径是否为目录
+///
+/// 返回 true 如果路径存在且是目录，false 如果是文件或不存在
+#[tauri::command]
+pub async fn is_directory(path: String) -> Result<bool, String> {
+    let absolute_path = to_absolute(&path)
+        .map_err(|e| FileError::Other(e).to_string())?;
+
+    let path_obj = Path::new(&absolute_path);
+
+    if !path_obj.exists() {
+        return Ok(false);
+    }
+
+    Ok(path_obj.is_dir())
 }

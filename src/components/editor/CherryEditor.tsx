@@ -19,7 +19,7 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
   const updateContent = useFileStore(state => state.updateContent);
   const { options, syncWithSettings } = useEditorStore();
 
-  // 初始化时同步设置
+  // 🔴 修复：初始化时立即同步设置，使用同步后的值
   useEffect(() => {
     syncWithSettings();
   }, [syncWithSettings]);
@@ -87,10 +87,10 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
           showFooter: false,
           autoScroll: true,
           autoSave2Textarea: true,
-          // 🔴 透传给 CodeMirror 的配置
+          // 透传给 CodeMirror 的配置
           codemirror: {
             lineNumbers: options.showLineNumbers,
-            lineWrapping: options.wordWrap,
+            lineWrapping: true, // 固定启用自动换行
           },
         },
         toolbars: {
@@ -213,9 +213,11 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
     }
   }, [options.fontSize, options.theme]);
 
-  // 🔴 动态更新行号和自动换行
+  // 🔴 动态更新行号
   useEffect(() => {
     if (!editorRef.current) return;
+
+    console.log('[CherryEditor] 准备更新行号，options.showLineNumbers =', options.showLineNumbers);
 
     // 🔴 使用 Cherry API 获取 CodeMirror 实例
     const cherry = editorRef.current as any;
@@ -226,20 +228,17 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
       return;
     }
 
+    console.log('[CherryEditor] 当前 lineNumbers 选项:', cmEditor.getOption('lineNumbers'));
+
     // 设置行号显示
     cmEditor.setOption('lineNumbers', options.showLineNumbers);
-    // 设置自动换行
-    cmEditor.setOption('lineWrapping', options.wordWrap);
 
-    console.log('[CherryEditor] 更新编辑器配置:', {
-      showLineNumbers: options.showLineNumbers,
-      wordWrap: options.wordWrap,
-    });
-  }, [options.showLineNumbers, options.wordWrap]);
+    console.log('[CherryEditor] 调用 setOption 后 lineNumbers 选项:', cmEditor.getOption('lineNumbers'));
+  }, [options.showLineNumbers]);
 
   return (
-    <div className={`cherry-editor-wrapper h-full ${className}`}>
-      <div ref={containerRef} className="cherry-markdown h-full" />
+    <div className={`cherry-editor-wrapper w-full h-full min-w-full min-h-full max-w-full max-h-full ${className}`}>
+      <div ref={containerRef} className="cherry-markdown w-full h-full min-w-full min-h-full max-w-full max-h-full" />
     </div>
   );
 }
