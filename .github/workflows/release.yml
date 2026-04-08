@@ -1,0 +1,190 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # macOS 构建
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 安装依赖
+        run: |
+          cd src-tauri
+          cargo install --locked tauri-cli
+          cd ..
+          pnpm install
+
+      - name: 构建应用
+        run: |
+          cd src-tauri
+          cargo tauri build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传 macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: minidoc-macos-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+
+      - name: 上传 macOS App
+        uses: actions/upload-artifact@v4
+        with:
+          name: minidoc-macos-app
+          path: src-tauri/target/release/bundle/macos/*.app
+
+  # Windows 构建
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 安装依赖
+        shell: pwsh
+        run: |
+          cd src-tauri
+          cargo install --locked tauri-cli
+          cd ..
+          pnpm install
+
+      - name: 构建应用
+        shell: pwsh
+        run: |
+          cd src-tauri
+          cargo tauri build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传 Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: minidoc-windows-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
+
+      - name: 上传 Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: minidoc-windows-exe
+          path: src-tauri/target/release/bundle/msi/*.exe
+
+  # Linux 构建
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev \
+              build-essential \
+              curl \
+              wget \
+              libssl-dev \
+              libgtk-3-dev \
+              libayatana-appindicator3-dev \
+              librsvg2-dev \
+              libjavascriptcoregtk-4.1-dev
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 安装依赖
+        run: |
+          cd src-tauri
+          cargo install --locked tauri-cli
+          cd ..
+          pnpm install
+
+      - name: 构建应用
+        run: |
+          cd src-tauri
+          cargo tauri build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传 Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: minidoc-linux-appimage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+
+      - name: 上传 Linux DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: minidoc-linux-deb
+          path: src-tauri/target/release/bundle/deb/*.deb
+
+  # 创建 GitHub Release
+  create-release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 整理构建产物
+        run: |
+          ls -R artifacts/
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/minidoc-macos-dmg/*
+            artifacts/minidoc-macos-app/*
+            artifacts/minidoc-windows-msi/*
+            artifacts/minidoc-windows-exe/*
+            artifacts/minidoc-linux-appimage/*
+            artifacts/minidoc-linux-deb/*
+          generate_release_notes: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
