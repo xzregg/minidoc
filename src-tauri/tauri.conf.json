@@ -34,6 +34,26 @@
     "macOS": {
       "minimumSystemVersion": "10.13"
     },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      },
+      "wix": {
+        "language": ["zh-CN", "en-US"]
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libgtk-3-0"]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],

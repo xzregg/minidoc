@@ -64,7 +64,3 @@ pub struct FileInfo {
     pub children: Option<Vec<FileInfo>>,
 }
 
-/// 将 FileError 转换为 String 的辅助函数
-pub fn into_string<E: Into<FileError>>(err: E) -> String {
-    err.into().to_string()
-}

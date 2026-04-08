@@ -41,16 +41,6 @@ fn should_ignore(name: &str) -> bool {
     })
 }
 
-/// 打开文件选择对话框
-///
-/// 返回选中的文件路径，如果用户取消则返回空字符串
-#[tauri::command]
-pub async fn open_file_dialog() -> Result<String, String> {
-    // 使用 Tauri 内置的文件对话框 API
-    // 这个命令需要在调用时传入 app handle，这里简化处理
-    Err("不支持".to_string())
-}
-
 /// 启动新的应用实例并打开文件
 ///
 /// 使用命令行参数启动新的 minidoc-app 进程
@@ -569,10 +559,6 @@ fn scan_directory_recursive(
     Ok(files)
 }
 
-/// 向后兼容：保留旧的 scan_directory 函数签名
-fn scan_directory(absolute_path: &str, display_path: &str) -> Result<Vec<FileInfo>, String> {
-    scan_directory_recursive(absolute_path, display_path, true, false)
-}
 
 /// 检查文件或目录是否存在
 #[tauri::command]

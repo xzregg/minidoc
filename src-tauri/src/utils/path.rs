@@ -44,24 +44,6 @@ pub fn get_file_name(path: &str) -> String {
         .to_string()
 }
 
-/// 获取路径的父目录
-pub fn get_parent_dir(path: &str) -> Option<String> {
-    let normalized = normalize_path(path);
-    let path = Path::new(&normalized);
-    path.parent()
-        .and_then(|p| p.to_str())
-        .map(|s| s.to_string())
-}
-
-/// 获取路径的扩展名
-pub fn get_extension(path: &str) -> Option<String> {
-    let normalized = normalize_path(path);
-    let path = Path::new(&normalized);
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|s| s.to_string())
-}
-
 /// 拼接路径
 pub fn join_paths(base: &str, relative: &str) -> String {
     let base_normalized = normalize_path(base);
