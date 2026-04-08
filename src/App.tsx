@@ -201,12 +201,27 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [openSearch]);
 
-  // 监听 Tauri 原生拖拽放下事件
+  // 🔴 监听 Tauri 原生拖拽放下事件（空依赖，只注册一次）
+  const openFileRef = useRef(openFile);
+  const setCurrentDirectoryRef = useRef(setCurrentDirectory);
+  const setHighlightedPathRef = useRef(setHighlightedPath);
+  const successRef = useRef(success);
+  const errorRef = useRef(error);
+
+  // 保持 ref 最新
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
+    openFileRef.current = openFile;
+    setCurrentDirectoryRef.current = setCurrentDirectory;
+    setHighlightedPathRef.current = setHighlightedPath;
+    successRef.current = success;
+    errorRef.current = error;
+  });
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
-      const unlisten = await listen<string>('drag-drop-opened', async (event) => {
+      unlisten = await listen<string>('drag-drop-opened', async (event) => {
         const filePath = event.payload;
         console.log('[App] 收到原生拖拽放下事件:', filePath);
 
@@ -214,16 +229,16 @@ function App() {
           const isDirectory = await invoke<boolean>('is_directory', { path: filePath });
 
           if (isDirectory) {
-            setCurrentDirectory(filePath);
-            setHighlightedPath(null);
+            setCurrentDirectoryRef.current(filePath);
+            setHighlightedPathRef.current(null);
             const dirName = filePath.split('/').pop() || filePath;
-            success(`已加载目录：${dirName}`);
+            successRef.current(`已加载目录：${dirName}`);
           } else {
             const ext = await path.extname(filePath);
             const isMarkdown = ['md', 'markdown', 'mkd', 'mdwn'].includes(ext.toLowerCase()) || ['.md', '.markdown', '.mkd', '.mdwn'].includes(ext.toLowerCase());
 
             if (!isMarkdown) {
-              error(`不支持的文件类型：${ext}，仅支持 Markdown 文件`);
+              errorRef.current(`不支持的文件类型：${ext}，仅支持 Markdown 文件`);
               return;
             }
 
@@ -231,33 +246,31 @@ function App() {
             const fileName = await path.basename(filePath);
             const dirPath = await path.dirname(filePath);
 
-            openFile({
+            openFileRef.current({
               path: filePath,
               name: fileName,
               content,
               modified: false,
             });
 
-            setCurrentDirectory(dirPath);
-            setHighlightedPath(filePath);
-            success(`已打开：${fileName}`);
+            setCurrentDirectoryRef.current(dirPath);
+            setHighlightedPathRef.current(filePath);
+            successRef.current(`已打开：${fileName}`);
           }
         } catch (err) {
           console.error('[App] 处理拖拽失败:', err);
           const errMsg = err instanceof Error ? err.message : String(err);
-          error(`处理拖拽失败：${errMsg}`);
+          errorRef.current(`处理拖拽失败：${errMsg}`);
         }
       });
-
-      cleanup = unlisten;
     };
 
     setupListener();
 
     return () => {
-      cleanup?.();
+      unlisten?.();
     };
-  }, [openFile, setCurrentDirectory, setHighlightedPath, success, error]);
+  }, []); // 🔴 空依赖，只注册一次！
 
   // 处理拖拽视觉反馈
   const handleDragOver = (e: React.DragEvent) => {
