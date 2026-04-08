@@ -185,6 +185,5 @@ jobs:
             artifacts/minidoc-linux-appimage/*
             artifacts/minidoc-linux-deb/*
           generate_release_notes: true
-          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
