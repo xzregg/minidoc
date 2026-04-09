@@ -131,3 +131,17 @@
   color: #f3f4f6 !important;
   border-bottom-color: #374151 !important;
 }
+
+/* 深色模式列表样式 */
+:root.dark .cherry-markdown ul,
+:root.dark .cherry-markdown ol {
+  color: #f3f4f6 !important;
+}
+
+:root.dark .cherry-markdown li {
+  color: #f3f4f6 !important;
+}
+
+:root.dark .cherry-markdown li::marker {
+  color: #9ca3af !important;
+}

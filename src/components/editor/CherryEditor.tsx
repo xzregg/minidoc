@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import Cherry from 'cherry-markdown';
-import 'cherry-markdown/dist/cherry-markdown.css';
+// 使用官方 CSS 确保样式一致性
+import '../../styles/cherry-markdown-official.css';
 import '../../styles/cherry-sidebar.css';
 import { useFileStore } from '../../stores/fileStore';
 import { useEditorStore } from '../../stores/editorStore';
