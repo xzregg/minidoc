@@ -10,7 +10,7 @@ interface SidebarTabsProps {
 
 export function SidebarTabs({ width = 280 }: SidebarTabsProps) {
   // 🔴 修复：使用 fileStore 的 currentDirectory，而不是本地状态
-  const { currentDirectory, setCurrentDirectory } = useFileStore();
+  const { currentDirectory, setCurrentDirectory, triggerRefresh } = useFileStore();
   const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
   const fileTreeRef = useRef<FileTreeRef>(null);
 
@@ -78,7 +78,7 @@ export function SidebarTabs({ width = 280 }: SidebarTabsProps) {
             <FiFolder size={14} />
           </button>
           <button
-            onClick={() => handleDirectorySelect(currentDirectory || '.')}
+            onClick={triggerRefresh}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1"
             title="刷新当前目录"
           >

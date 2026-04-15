@@ -1,10 +1,13 @@
 import { useEffect, useRef } from 'react';
 import Cherry from 'cherry-markdown';
+import { save } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
 // 使用官方 CSS 确保样式一致性
 import '../../styles/cherry-markdown-official.css';
 import '../../styles/cherry-sidebar.css';
 import { useFileStore } from '../../stores/fileStore';
 import { useEditorStore } from '../../stores/editorStore';
+import { useToast } from '../ui/Toast';
 
 interface CherryEditorProps {
   className?: string;
@@ -18,7 +21,241 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
 
   const currentFile = useFileStore(state => state.currentFile);
   const updateContent = useFileStore(state => state.updateContent);
-  const { options, syncWithSettings } = useEditorStore();
+  const { options, syncWithSettings, isPreviewOnly, savedEditorWidth, setSavedEditorWidth } = useEditorStore();
+  const { success, error } = useToast();
+
+  // 🔴 自定义导出函数：Cherry.getHtml() + 隐藏 iframe + 固定宽度截图
+  const handleExportImage = async () => {
+    const cherry = editorRef.current;
+    if (!cherry) return;
+
+    try {
+      console.log('[Export] 开始导出长图流程');
+
+      const filePath = await save({
+        filters: [{ name: '图片', extensions: ['jpg', 'png'] }],
+        defaultPath: currentFile?.name?.replace('.md', '') || 'untitled',
+      });
+
+      console.log('[Export] 用户选择的路径:', filePath);
+
+      if (!filePath) {
+        console.log('[Export] 用户取消选择');
+        return;
+      }
+
+      // 🔴 核心：使用 Cherry API 获取完整的渲染 HTML（带样式）
+      const htmlContent = cherry.getHtml();
+      console.log('[Export] HTML 内容长度:', htmlContent.length);
+
+      if (!htmlContent || htmlContent.length < 50) {
+        error('无法获取预览内容，内容可能为空');
+        return;
+      }
+
+      // 🔴 创建隐藏 iframe，渲染完整 HTML（固定宽度 800px）
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:9999px;visibility:hidden;';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        document.body.removeChild(iframe);
+        error('无法创建渲染容器');
+        return;
+      }
+
+      // 写入完整 HTML + 基础样式
+      iframeDoc.open();
+      iframeDoc.write(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 40px;
+      width: 800px;
+      line-height: 1.6;
+      background: white;
+    }
+    pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 2px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    img { max-width: 100%; }
+    blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 16px; color: #666; }
+    h1, h2, h3 { margin-top: 24px; margin-bottom: 16px; }
+    p { margin: 16px 0; }
+    ul, ol { margin: 16px 0; padding-left: 24px; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+${htmlContent}
+</body>
+</html>
+      `);
+      iframeDoc.close();
+
+      // 等待 iframe 渲染完成
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const iframeBody = iframeDoc.body;
+      const fullHeight = iframeBody.scrollHeight;
+      console.log('[Export] iframe 尺寸: 800 x', fullHeight);
+
+      // 动态加载 html2canvas
+      const html2canvasModule = await import('html2canvas');
+      const html2canvasFn = html2canvasModule.default || html2canvasModule;
+
+      // 截取 iframe body
+      const canvas = await html2canvasFn(iframeBody, {
+        allowTaint: true,
+        useCORS: true,
+        scrollY: 0,
+        scrollX: 0,
+        width: 800,
+        height: fullHeight,
+        windowWidth: 800,
+        windowHeight: fullHeight,
+        scale: 1,
+        backgroundColor: '#ffffff',
+        logging: true,
+      });
+
+      // 清理 iframe
+      document.body.removeChild(iframe);
+
+      console.log('[Export] Canvas 尺寸:', canvas.width, 'x', canvas.height);
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.9);
+      const base64Data = imgData.split(',')[1];
+
+      await invoke('write_binary_file', {
+        path: filePath,
+        content: base64Data,
+      });
+      console.log('[Export] 文件已写入:', filePath);
+      success(`已导出长图: ${filePath}`);
+    } catch (err) {
+      console.error('[Export] 导出长图失败:', err);
+      error(`导出失败: ${err}`);
+    }
+  };
+
+  const handleExportHtml = async () => {
+    const cherry = editorRef.current;
+    if (!cherry) return;
+
+    try {
+      const filePath = await save({
+        filters: [{ name: 'HTML', extensions: ['html'] }],
+        defaultPath: currentFile?.name?.replace('.md', '') || 'untitled',
+      });
+
+      if (!filePath) return;
+
+      const htmlContent = cherry.getHtml();
+
+      // 🔴 修复：使用 Rust backend 写入文件
+      await invoke('write_file', {
+        path: filePath,
+        content: htmlContent,
+      });
+      success(`已导出 HTML: ${filePath.split('/').pop()}`);
+    } catch (err) {
+      console.error('[Export] 导出 HTML 失败:', err);
+      error(`导出失败: ${err}`);
+    }
+  };
+
+  // 🔴 PDF 导出：生成临时 HTML 文件，用系统命令打开
+  const handleExportPdf = async () => {
+    const cherry = editorRef.current;
+    if (!cherry) return;
+
+    try {
+      // 使用 Cherry API 获取完整的渲染 HTML
+      const htmlContent = cherry.getHtml();
+      console.log('[Export] HTML 内容长度:', htmlContent.length);
+
+      if (!htmlContent || htmlContent.length < 50) {
+        error('无法获取预览内容，内容可能为空');
+        return;
+      }
+
+      // 创建完整 HTML 文档
+      const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>打印预览 - ${currentFile?.name || 'untitled'}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+    pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 2px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    img { max-width: 100%; }
+    blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 16px; color: #666; }
+    h1, h2, h3 { margin-top: 24px; margin-bottom: 16px; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+${htmlContent}
+<script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+</body>
+</html>`;
+
+      // 🔴 保存到临时目录（使用 Tauri path API）
+      const tempDir = '/tmp';
+      const tempFileName = `minidoc-print-${Date.now()}.html`;
+      const tempPath = `${tempDir}/${tempFileName}`;
+
+      await invoke('write_file', { path: tempPath, content: fullHtml });
+      console.log('[Export] 临时 HTML 已保存:', tempPath);
+
+      // 🔴 核心：使用 Rust backend 直接调用系统浏览器打开
+      await invoke('open_in_browser', { path: tempPath });
+      console.log('[Export] 已在浏览器中打开');
+
+      success('请在浏览器打印对话框中选择"保存为 PDF"');
+    } catch (err) {
+      console.error('[Export] PDF 导出失败:', err);
+      error(`PDF 导出失败: ${err}`);
+    }
+  };
+
+  const handleExportMarkdown = async () => {
+    const cherry = editorRef.current;
+    if (!cherry) return;
+
+    try {
+      const filePath = await save({
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+        defaultPath: currentFile?.name || 'untitled',
+      });
+
+      if (!filePath) return;
+
+      const markdown = cherry.getMarkdown();
+
+      // 🔴 修复：使用 Rust backend 写入文件
+      await invoke('write_file', {
+        path: filePath,
+        content: markdown,
+      });
+      success(`已导出 Markdown: ${filePath.split('/').pop()}`);
+    } catch (err) {
+      console.error('[Export] 导出 Markdown 失败:', err);
+      error(`导出失败: ${err}`);
+    }
+  };
 
   // 🔴 修复：初始化时立即同步设置，使用同步后的值
   useEffect(() => {
@@ -99,7 +336,7 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
             'bold',
             'italic',
             {
-              strikethrough: ['strikethrough', 'underline', 'sub', 'sup'],
+             strikethrough: ['strikethrough', 'underline', 'sub', 'sup', 'ruby'],
             },
             'size',
             '|',
@@ -111,30 +348,38 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
             'checklist',
             'panel',
             'align',
+            'detail',
             '|',
-            'formula',
             {
               insert: [
                 'image',
+                'audio',
+                'video',
                 'link',
                 'hr',
                 'br',
                 'code',
                 'inlineCode',
-                'table',
+                'formula',
                 'toc',
+                'table',
+                'pdf',
+                'word',
+                'file',
               ],
             },
             'graph',
+            'proTable',
             'togglePreview',
             'codeTheme',
             'search',
+            'shortcutKey',
             '|',
             'mobilePreview',
             'copy',
             'theme',
           ],
-          toolbarRight: ['fullScreen', '|', { export: ['pdf', 'html', 'png', 'markdown'] }, 'wordCount'],
+          toolbarRight: ['fullScreen', '|', 'customExport', 'changeLocale', 'wordCount'],
           bubble: [
             'bold',
             'italic',
@@ -150,6 +395,43 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
           toc: {
             defaultModel: 'full',
             updateLocationHash: false,
+          },
+          customMenu: {
+            // 🔴 自定义导出菜单：使用 Tauri dialog 选择保存路径
+            customExport: Cherry.createMenuHook('导出', {
+              iconName: 'export',
+              subMenuConfig: [
+                { noIcon: true, name: '导出PDF', onclick: handleExportPdf },
+                { noIcon: true, name: '导出长图', onclick: handleExportImage },
+                { noIcon: true, name: '导出HTML', onclick: handleExportHtml },
+                { noIcon: true, name: '导出Markdown', onclick: handleExportMarkdown },
+              ],
+            }),
+            customMenuTable: Cherry.createMenuHook('图表', {
+              iconName: 'trendingUp',
+              subMenuConfig: [
+                { noIcon: true, name: '折线图', onclick: () => {
+                  const cherry = editorRef.current;
+                  cherry?.insert('\n| :line:{\"title\": \"折线图\"} | Header1 | Header2 | Header3 | Header4 |\n| ------ | ------ | ------ | ------ | ------ |\n| Sample1 | 11 | 11 | 4 | 33 |\n| Sample2 | 112 | 111 | 22 | 222 |\n| Sample3 | 333 | 142 | 311 | 11 |\n');
+                }},
+                { noIcon: true, name: '柱状图', onclick: () => {
+                  const cherry = editorRef.current;
+                  cherry?.insert('\n| :bar:{\"title\": \"柱状图\"} | Header1 | Header2 | Header3 | Header4 |\n| ------ | ------ | ------ | ------ | ------ |\n| Sample1 | 11 | 11 | 4 | 33 |\n| Sample2 | 112 | 111 | 22 | 222 |\n| Sample3 | 333 | 142 | 311 | 11 |\n');
+                }},
+                { noIcon: true, name: '雷达图', onclick: () => {
+                  const cherry = editorRef.current;
+                  cherry?.insert('\n| :radar:{\"title\": \"雷达图\"} | Header1 | Header2 | Header3 | Header4 |\n| ------ | ------ | ------ | ------ | ------ |\n| Sample1 | 11 | 11 | 4 | 33 |\n| Sample2 | 112 | 111 | 22 | 222 |\n| Sample3 | 333 | 142 | 311 | 11 |\n');
+                }},
+                { noIcon: true, name: '饼图', onclick: () => {
+                  const cherry = editorRef.current;
+                  cherry?.insert('\n| :pie:{\"title\": \"饼图\"} | Header1 | Header2 | Header3 | Header4 |\n| ------ | ------ | ------ | ------ | ------ |\n| Sample1 | 11 | 11 | 4 | 33 |\n| Sample2 | 112 | 111 | 22 | 222 |\n| Sample3 | 333 | 142 | 311 | 11 |\n');
+                }},
+                { noIcon: true, name: '散点图', onclick: () => {
+                  const cherry = editorRef.current;
+                  cherry?.insert('\n| :scatter:{\"title\": \"散点图\"} | X | Y |\n| ------ | ------ | ------ |\n| Point1 | 10 | 20 |\n| Point2 | 30 | 40 |\n| Point3 | 50 | 60 |\n');
+                }},
+              ],
+            }),
           },
         },
         callback: {
@@ -236,6 +518,65 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
 
     console.log('[CherryEditor] 调用 setOption 后 lineNumbers 选项:', cmEditor.getOption('lineNumbers'));
   }, [options.showLineNumbers]);
+
+  // 🔴 CSS 隐藏方式控制预览模式：记录宽度 → 隐藏编辑区 → 预览区100%
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const cherryContainer = containerRef.current.querySelector('.cherry') as HTMLElement;
+    if (!cherryContainer) return;
+
+    const editorEl = cherryContainer.querySelector('.cherry-editor') as HTMLElement;
+    const previewerEl = cherryContainer.querySelector('.cherry-previewer') as HTMLElement;
+    const dragLine = cherryContainer.querySelector('.cherry-drag') as HTMLElement;
+
+    if (!editorEl || !previewerEl) return;
+
+    console.log('[CherryEditor] 切换预览模式:', isPreviewOnly);
+
+    if (isPreviewOnly) {
+      // 进入预览模式：
+      // 1. 记录当前编辑区宽度
+      const currentWidth = editorEl.style.width || editorEl.offsetWidth + 'px';
+      setSavedEditorWidth(currentWidth);
+      console.log('[CherryEditor] 保存编辑区宽度:', currentWidth);
+
+      // 2. 编辑区隐藏
+      editorEl.classList.add('cherry-editor--hidden');
+      editorEl.style.display = 'none';
+
+      // 3. 分隔线隐藏
+      if (dragLine) dragLine.style.display = 'none';
+
+      // 4. 预览区100%宽度
+      previewerEl.style.width = '100%';
+      previewerEl.classList.add('cherry-preview--full');
+    } else {
+      // 恢复分屏模式：
+      // 1. 编辑区取消隐藏
+      editorEl.classList.remove('cherry-editor--hidden');
+      editorEl.style.display = '';
+
+      // 2. 分隔线显示
+      if (dragLine) dragLine.style.display = '';
+
+      // 3. 预览区取消full状态
+      previewerEl.classList.remove('cherry-preview--full');
+
+      // 4. 恢复之前保存的宽度
+      if (savedEditorWidth) {
+        editorEl.style.width = savedEditorWidth;
+        previewerEl.style.width = `calc(100% - ${savedEditorWidth})`;
+        console.log('[CherryEditor] 恢复编辑区宽度:', savedEditorWidth);
+      } else {
+        // 默认50%
+        editorEl.style.width = '50%';
+        previewerEl.style.width = '50%';
+      }
+    }
+
+    console.log('[CherryEditor] 切换完成');
+  }, [isPreviewOnly]);
 
   return (
     <div className={`cherry-editor-wrapper w-full h-full min-w-full min-h-full max-w-full max-h-full ${className}`}>

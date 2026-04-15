@@ -33,6 +33,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         // 仅主实例注册 single-instance
         .plugin(if file_arg.is_none() {
             tauri_plugin_single_instance::init(|app_handle, argv, _cwd| {
@@ -54,6 +55,7 @@ pub fn run() {
             read_file,
             read_file_lines,
             write_file,
+            write_binary_file,
             append_file,
             create_file,
             delete_file,
@@ -70,6 +72,7 @@ pub fn run() {
             save_temp_file,
             open_with_default_app,
             open_with_print,
+            open_in_browser,
         ])
         .setup(move |app| {
             APP_INITIALIZED.store(true, Ordering::Relaxed);

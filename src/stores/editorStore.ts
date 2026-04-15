@@ -11,11 +11,13 @@ export interface EditorOptions {
 
 interface EditorState {
   options: EditorOptions;
-  isPreviewMode: boolean;
+  isPreviewOnly: boolean;
+  savedEditorWidth: string | null; // 保存的编辑区宽度
   isFullscreen: boolean;
 
   updateOptions: (options: Partial<EditorOptions>) => void;
-  togglePreview: () => void;
+  togglePreviewOnly: () => void;
+  setSavedEditorWidth: (width: string) => void;
   toggleFullscreen: () => void;
   syncWithSettings: () => void;
 }
@@ -30,7 +32,8 @@ const defaultOptions: EditorOptions = {
 
 export const useEditorStore = create<EditorState>((set) => ({
   options: defaultOptions,
-  isPreviewMode: false,
+  isPreviewOnly: false,
+  savedEditorWidth: null,
   isFullscreen: false,
 
   updateOptions: (newOptions) => {
@@ -39,8 +42,12 @@ export const useEditorStore = create<EditorState>((set) => ({
     }));
   },
 
-  togglePreview: () => {
-    set((state) => ({ isPreviewMode: !state.isPreviewMode }));
+  togglePreviewOnly: () => {
+    set((state) => ({ isPreviewOnly: !state.isPreviewOnly }));
+  },
+
+  setSavedEditorWidth: (width: string) => {
+    set({ savedEditorWidth: width });
   },
 
   toggleFullscreen: () => {

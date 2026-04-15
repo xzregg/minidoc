@@ -1,7 +1,8 @@
-import { FiFilePlus, FiFolder, FiSave, FiMoon, FiSettings, FiSun } from 'react-icons/fi';
+import { FiFilePlus, FiFolder, FiSave, FiMoon, FiSettings, FiSun, FiEye } from 'react-icons/fi';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useFileStore } from '@/stores/fileStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { useEffect } from 'react';
 import { useToast } from '../ui/Toast';
 import { isTauri } from '@/utils/tauri-env';
@@ -11,6 +12,8 @@ export function Toolbar() {
   const { openSettings } = useUIStore();
   const { openFile, saveFile, isSaving, currentFile, revealInExplorer, setHighlightedPath, currentDirectory, saveFileAs, triggerRefresh } = useFileStore();
   const { success, warning, error } = useToast();
+  const isPreviewOnly = useEditorStore(state => state.isPreviewOnly);
+  const togglePreviewOnly = useEditorStore(state => state.togglePreviewOnly);
 
   const handleNewFile = async () => {
     console.log('[Toolbar] 创建新文件');
@@ -218,6 +221,18 @@ export function Toolbar() {
 
       {/* Right Actions */}
       <div className="flex items-center gap-1">
+        {/* 预览模式切换按钮 */}
+        <button
+          onClick={togglePreviewOnly}
+          className={`p-2 rounded-lg transition-colors ${
+            isPreviewOnly
+              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+          }`}
+          title={isPreviewOnly ? '切换到分屏模式' : '切换到预览模式'}
+        >
+          <FiEye size={18} />
+        </button>
         <button
           onClick={toggleTheme}
           className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"

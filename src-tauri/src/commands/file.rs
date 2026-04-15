@@ -7,6 +7,8 @@ use crate::utils::{get_file_name, join_paths, to_absolute};
 use std::fs;
 use std::io::{BufReader, BufRead, Write};
 use std::path::Path;
+use std::process::Command;
+use base64::{Engine as _, engine::general_purpose};
 
 /// 隐藏文件和系统目录过滤列表
 const IGNORED_PATTERNS: &[&str] = &[
@@ -222,6 +224,54 @@ pub async fn write_file(path: String, content: String) -> Result<(), String> {
         })?;
 
     eprintln!("[MiniDoc] File written successfully: {}", path);
+    Ok(())
+}
+
+/// 写入二进制文件（从 base64 编码）
+///
+/// 用于导出图片等二进制内容
+#[tauri::command]
+pub async fn write_binary_file(path: String, content: String) -> Result<(), String> {
+    eprintln!("[MiniDoc] write_binary_file called with path: {}, content length: {}", path, content.len());
+
+    let absolute_path = to_absolute(&path)
+        .map_err(|e| {
+            eprintln!("[MiniDoc] to_absolute failed: {}", e);
+            FileError::Other(e)
+        })?;
+
+    let path_obj = Path::new(&absolute_path);
+
+    // 确保父目录存在
+    if let Some(parent) = path_obj.parent() {
+        if !parent.exists() {
+            eprintln!("[MiniDoc] Creating parent directory: {:?}", parent);
+            fs::create_dir_all(parent)
+                .map_err(|e| {
+                    eprintln!("[MiniDoc] Failed to create parent directory: {}", e);
+                    FileError::from(e)
+                })?;
+        }
+    }
+
+    // 解码 base64
+    let binary_data = general_purpose::STANDARD
+        .decode(&content)
+        .map_err(|e| {
+            eprintln!("[MiniDoc] Failed to decode base64: {}", e);
+            FileError::Other(format!("Base64 解码失败: {}", e))
+        })?;
+
+    eprintln!("[MiniDoc] Decoded {} bytes from base64", binary_data.len());
+
+    // 直接写入二进制数据
+    fs::write(&absolute_path, &binary_data)
+        .map_err(|e| {
+            eprintln!("[MiniDoc] Failed to write binary file: {}", e);
+            FileError::from(e)
+        })?;
+
+    eprintln!("[MiniDoc] Binary file written successfully: {}", path);
     Ok(())
 }
 
@@ -617,4 +667,55 @@ pub async fn is_directory(path: String) -> Result<bool, String> {
     }
 
     Ok(path_obj.is_dir())
+}
+
+/// 🔴 用系统默认浏览器打开 HTML 文件（用于 PDF 导出）
+///
+/// macOS: open 命令
+/// Linux: xdg-open
+/// Windows: start
+#[tauri::command]
+pub async fn open_in_browser(path: String) -> Result<(), String> {
+    eprintln!("[MiniDoc] open_in_browser called with path: {}", path);
+
+    let absolute_path = to_absolute(&path)
+        .map_err(|e| {
+            eprintln!("[MiniDoc] to_absolute failed: {}", e);
+            FileError::Other(e)
+        })?;
+
+    eprintln!("[MiniDoc] absolute_path: {}", absolute_path);
+
+    // 检测操作系统并选择对应的打开命令
+    #[cfg(target_os = "macos")]
+    let result = Command::new("open")
+        .arg(&absolute_path)
+        .spawn();
+
+    #[cfg(target_os = "linux")]
+    let result = Command::new("xdg-open")
+        .arg(&absolute_path)
+        .spawn();
+
+    #[cfg(target_os = "windows")]
+    let result = Command::new("cmd")
+        .args(["/C", "start", &absolute_path])
+        .spawn();
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    let result = {
+        eprintln!("[MiniDoc] Unsupported OS");
+        return Err("不支持的操作系统".to_string());
+    };
+
+    match result {
+        Ok(_) => {
+            eprintln!("[MiniDoc] Successfully opened file in browser");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("[MiniDoc] Failed to open file: {}", e);
+            Err(format!("无法打开文件: {}", e))
+        }
+    }
 }
