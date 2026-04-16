@@ -7,10 +7,32 @@ mod utils;
 use commands::file::*;
 use commands::export::*;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{Emitter, Manager, RunEvent};
 
 /// 全局标记：应用是否已经完成初始化
 static APP_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// 🔴 新增：暂存的待打开文件路径
+static PENDING_FILE_PATH: Mutex<Option<String>> = Mutex::new(None);
+
+/// 🔴 前端准备就绪通知：发送暂存的文件路径
+#[tauri::command]
+async fn frontend_ready(app: tauri::AppHandle) -> Result<(), String> {
+    eprintln!("[minidoc] frontend_ready 命令收到，前端已准备好");
+
+    // 设置初始化完成
+    APP_INITIALIZED.store(true, Ordering::Relaxed);
+
+    // 检查是否有暂存的文件路径
+    let pending = PENDING_FILE_PATH.lock().unwrap().take();
+    if let Some(file_path) = pending {
+        eprintln!("[minidoc] 发送暂存的文件路径: {}", file_path);
+        app.emit("file-opened", &file_path).ok();
+    }
+
+    Ok(())
+}
 
 /// 检查命令行参数中是否有文件路径
 fn get_file_path_from_args() -> Option<String> {
@@ -73,21 +95,18 @@ pub fn run() {
             open_with_default_app,
             open_with_print,
             open_in_browser,
+            frontend_ready,  // 🔴 在 lib.rs 中定义
         ])
         .setup(move |app| {
-            APP_INITIALIZED.store(true, Ordering::Relaxed);
+            // 🔴 修复：不要立即设置 APP_INITIALIZED，等前端通知
+            // APP_INITIALIZED.store(true, Ordering::Relaxed);
             println!("[minidoc] setup 完成，file_arg: {:?}", file_arg_for_setup);
 
-            // 🟢 处理首次启动的文件参数
+            // 🔴 存储 pending_file_path，等前端准备好后再发送
             if let Some(file_path) = &file_arg_for_setup {
-                println!("[minidoc] 首次启动检测到文件参数：{}", file_path);
-                let app_handle = app.handle().clone();
-                let file_path_clone = file_path.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                    println!("[minidoc] 发送 file-opened 事件");
-                    app_handle.emit("file-opened", &file_path_clone).ok();
-                });
+                println!("[minidoc] 首次启动检测到文件参数，暂存: {}", file_path);
+                // 暂存到全局变量，等 frontend_ready 命令触发
+                PENDING_FILE_PATH.lock().unwrap().replace(file_path.clone());
             }
 
             Ok(())
@@ -125,17 +144,16 @@ pub fn run() {
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|_| url.to_string());
 
-                    let event_name = if APP_INITIALIZED.load(Ordering::Relaxed) {
-                        "file-opened-external"
+                    // 🔴 修复：根据 APP_INITIALIZED 判断
+                    if APP_INITIALIZED.load(Ordering::Relaxed) {
+                        // 前端已准备好，直接发送事件
+                        println!("[minidoc] 前端已准备好，发送 file-opened-external: {}", path_str);
+                        app_handle.emit("file-opened-external", &path_str).ok();
                     } else {
-                        "file-opened"
-                    };
-
-                    let app_handle = app_handle.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_secs(1));
-                        app_handle.emit(event_name, &path_str).ok();
-                    });
+                        // 前端未准备好，暂存文件路径
+                        println!("[minidoc] 前端未准备好，暂存文件路径: {}", path_str);
+                        PENDING_FILE_PATH.lock().unwrap().replace(path_str);
+                    }
                 }
             }
             RunEvent::Exit => println!("[minidoc] 退出"),

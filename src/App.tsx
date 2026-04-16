@@ -133,11 +133,14 @@ function App() {
         const filePath = event.payload;
         console.log('[App] 收到文件打开事件 (file-opened):', filePath);
         setFileOpened(true);
-        // 直接用当前最新的 openFilePath 引用（不依赖 useCallback）
         await openFilePath(filePath);
       });
 
       cleanup = unlisten;
+
+      // 🔴 修复：监听器注册完成后，通知 Rust 后端发送暂存的文件路径
+      console.log('[App] 监听器已注册，调用 frontend_ready');
+      await invoke('frontend_ready');
     };
 
     setupListener();
@@ -155,8 +158,6 @@ function App() {
       const unlisten = await listen<string>('file-opened-external', async (event) => {
         const filePath = event.payload;
         console.log('[App] 收到外部文件打开事件 (file-opened-external):', filePath);
-
-        // 使用队列函数处理
         enqueueFileDialog(filePath);
       });
 
@@ -174,6 +175,7 @@ function App() {
   useEffect(() => {
     if (initialized || fileOpened) return;
 
+    // 🔴 修复：延迟 2 秒，等待 frontend_ready 响应
     const timer = setTimeout(() => {
       const sampleFile = {
         path: '/untitled.md',
@@ -183,7 +185,7 @@ function App() {
       };
       openFile(sampleFile);
       setInitialized(true);
-    }, 1500);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, [initialized, fileOpened, openFile]);
