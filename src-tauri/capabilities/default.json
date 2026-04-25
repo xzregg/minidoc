@@ -13,6 +13,7 @@
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:webview:allow-print",
+    "core:webview:allow-internal-toggle-devtools",
     "opener:default",
     "dialog:default",
     "dialog:allow-open",

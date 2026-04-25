@@ -234,6 +234,11 @@ function App() {
         e.preventDefault();
         openSearch();
       }
+      // 🔴 Cmd+Option+I 切换调试器
+      if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === 'i') {
+        e.preventDefault();
+        invoke('toggle_devtools').catch(() => {});
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);

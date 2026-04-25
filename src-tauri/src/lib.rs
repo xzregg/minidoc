@@ -43,6 +43,18 @@ async fn frontend_ready(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 🔴 切换调试器
+#[tauri::command]
+fn toggle_devtools(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_devtools_open() {
+            window.close_devtools();
+        } else {
+            window.open_devtools();
+        }
+    }
+}
+
 /// 🔴 开始监听文件外部变化
 #[tauri::command]
 async fn start_file_watch(path: String, app: tauri::AppHandle) -> Result<(), String> {
@@ -151,6 +163,7 @@ pub fn run() {
             get_file_mtime,
             launch_new_instance,
             check_pandoc,
+            toggle_devtools,
             export_to_word,
             save_temp_file,
             open_with_default_app,
@@ -170,11 +183,6 @@ pub fn run() {
                 println!("[minidoc] 首次启动检测到文件参数，暂存: {}", file_path);
                 // 暂存到全局变量，等 frontend_ready 命令触发
                 PENDING_FILE_PATH.lock().unwrap().replace(file_path.clone());
-            }
-
-            // 🔴 打开 DevTools（调试用）
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
             }
 
             Ok(())
