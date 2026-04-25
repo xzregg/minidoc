@@ -6,6 +6,7 @@ export interface File {
   name: string;
   modified: boolean;
   content: string;
+  fileMtime?: number; // 磁盘文件的最后修改时间（秒级时间戳）
 }
 
 interface FileState {
@@ -29,6 +30,10 @@ interface FileState {
   saveFileAs: (newPath: string) => Promise<void>;
   closeCurrentFile: () => void;
 
+  // 🔴 重新加载版本号：每次从磁盘重新读取内容时 +1
+  reloadVersion: number;
+  incrementReloadVersion: () => void;
+
   // 资源管理器联动方法
   setHighlightedPath: (path: string | null) => void;
   setCurrentDirectory: (path: string | null) => void;
@@ -42,11 +47,16 @@ export const useFileStore = create<FileState>((set, get) => ({
   highlightedPath: null,
   currentDirectory: null,
   refreshVersion: 0,
+  reloadVersion: 0,
   autoSaveEnabled: true,
   autoSaveInterval: 30000,
 
   triggerRefresh: () => {
     set({ refreshVersion: get().refreshVersion + 1 });
+  },
+
+  incrementReloadVersion: () => {
+    set({ reloadVersion: get().reloadVersion + 1 });
   },
 
   openFile: (file) => {
@@ -55,7 +65,7 @@ export const useFileStore = create<FileState>((set, get) => ({
     } else {
       console.log('[fileStore] 关闭当前文件');
     }
-    set({ currentFile: file });
+    set({ currentFile: file, reloadVersion: get().reloadVersion + 1 });
   },
 
   closeCurrentFile: () => {
@@ -65,6 +75,9 @@ export const useFileStore = create<FileState>((set, get) => ({
   updateContent: (content) => {
     const { currentFile } = get();
     if (!currentFile) return;
+
+    // 内容未变化，不创建新对象（避免触发 useEffect 循环）
+    if (currentFile.content === content) return;
 
     set({
       currentFile: { ...currentFile, content, modified: true },
@@ -87,8 +100,10 @@ export const useFileStore = create<FileState>((set, get) => ({
           path: currentFile.path,
           content: currentFile.content,
         });
+        // 🔴 保存后更新 fileMtime，避免定时扫描误判为外部修改
+        const fileMtime = await invoke<number>('get_file_mtime', { path: currentFile.path });
         set({
-          currentFile: { ...currentFile, modified: false },
+          currentFile: { ...currentFile, modified: false, fileMtime },
           isSaving: false,
         });
         useToastStore.getState().addToast({

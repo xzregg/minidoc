@@ -36,6 +36,7 @@ function App() {
 
     try {
       const content = await invoke<string>('read_file', { path: filePath });
+      const fileMtime = await invoke<number>('get_file_mtime', { path: filePath });
       const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
 
       openFile({
@@ -43,6 +44,7 @@ function App() {
         name: fileName,
         content,
         modified: false,
+        fileMtime,
       });
 
       const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
@@ -171,6 +173,41 @@ function App() {
     };
   }, []); // 空依赖，只注册一次
 
+  // 🔴 定时扫描文件 mtime，自动加载外部变化
+  const fileWatchRef = useRef({ path: '', mtime: 0 });
+
+  useEffect(() => {
+    const { currentFile } = useFileStore.getState();
+    fileWatchRef.current = {
+      path: currentFile?.path || '',
+      mtime: currentFile?.fileMtime || 0,
+    };
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const { path, mtime: cachedMtime } = fileWatchRef.current;
+      if (!path) return; // 无文件，不扫描
+
+      (async () => {
+        try {
+          const diskMtime = await invoke<number>('get_file_mtime', { path });
+          if (diskMtime > cachedMtime) {
+            console.log('[App] 定时扫描发现外部修改，静默加载:', path);
+            const { openFile: ofn } = useFileStore.getState();
+            const content = await invoke<string>('read_file', { path });
+            const fileName = path.split('/').pop() || path.split('\\').pop() || 'unknown';
+            ofn({ path, name: fileName, content, modified: false, fileMtime: diskMtime });
+          }
+        } catch (err) {
+          console.error('[App] 定时扫描失败:', err);
+        }
+      })();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []); // 全局定时器，只注册一次
+
   // 初始化时打开一个示例文件（仅在没有通过双击打开文件时）
   useEffect(() => {
     if (initialized || fileOpened) return;
@@ -245,6 +282,7 @@ function App() {
             }
 
             const content = await invoke<string>('read_file', { path: filePath });
+            const fileMtime = await invoke<number>('get_file_mtime', { path: filePath });
             const fileName = await path.basename(filePath);
             const dirPath = await path.dirname(filePath);
 
@@ -253,6 +291,7 @@ function App() {
               name: fileName,
               content,
               modified: false,
+              fileMtime,
             });
 
             setCurrentDirectoryRef.current(dirPath);

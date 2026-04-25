@@ -2,7 +2,7 @@
 
 /* 调整 Cherry 目录侧边栏 */
 .cherry-sidebar {
-  top: 40px !important; /* 紧贴顶部栏下方 */
+  top: 40px !important;
   height: calc(100vh - 40px) !important;
   max-height: calc(100vh - 40px) !important;
 }
@@ -24,16 +24,9 @@
   flex-direction: column !important;
 }
 
-/* 目录样式调整 */
-.cherry-toc {
-  flex: 1 !important;
-  overflow-y: auto !important;
-}
-
-/* 目录列表样式 */
-.cherry-toc-list {
-  height: 100% !important;
-  overflow-y: auto !important;
+/* 目录列表项间距 */
+.cherry-flex-toc.cherry-flex-toc__pure .cherry-toc-list .cherry-toc-one-a {
+  margin-bottom: 2px !important;
 }
 
 /* Dark mode styles for Cherry editor */

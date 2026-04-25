@@ -8,6 +8,7 @@ use commands::file::*;
 use commands::export::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, RunEvent};
 
 /// 全局标记：应用是否已经完成初始化
@@ -15,6 +16,14 @@ static APP_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// 🔴 新增：暂存的待打开文件路径
 static PENDING_FILE_PATH: Mutex<Option<String>> = Mutex::new(None);
+
+/// 🔴 新增：文件监听器
+static FILE_WATCHER: Mutex<Option<std::sync::Arc<Mutex<Option<notify::RecommendedWatcher>>>>> =
+    Mutex::new(None);
+
+/// 🔴 文件变化防抖：记录上次通知时间
+static LAST_NOTIFY_TIME: Mutex<Option<Instant>> = Mutex::new(None);
+const DEBOUNCE_DURATION: Duration = Duration::from_secs(1);
 
 /// 🔴 前端准备就绪通知：发送暂存的文件路径
 #[tauri::command]
@@ -31,6 +40,57 @@ async fn frontend_ready(app: tauri::AppHandle) -> Result<(), String> {
         app.emit("file-opened", &file_path).ok();
     }
 
+    Ok(())
+}
+
+/// 🔴 开始监听文件外部变化
+#[tauri::command]
+async fn start_file_watch(path: String, app: tauri::AppHandle) -> Result<(), String> {
+    use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+
+    eprintln!("[minidoc] start_file_watch: {}", path);
+
+    // 停止之前的监听
+    stop_file_watch().ok();
+
+    let path_clone = path.clone();
+    let mut watcher: RecommendedWatcher = RecommendedWatcher::new(
+        move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                if matches!(event.kind, EventKind::Modify(_)) {
+                    // 🔴 防抖：1 秒内只通知一次
+                    let now = Instant::now();
+                    let mut last = LAST_NOTIFY_TIME.lock().unwrap();
+                    if let Some(prev) = *last {
+                        if now.duration_since(prev) < DEBOUNCE_DURATION {
+                            return; // 距离上次通知不足 1 秒，忽略
+                        }
+                    }
+                    *last = Some(now);
+                    eprintln!("[minidoc] 检测到文件变化: {}", path_clone);
+                    app.emit("file-externally-changed", &path_clone).ok();
+                }
+            }
+        },
+        Config::default(),
+    )
+    .map_err(|e| format!("创建监听器失败: {}", e))?;
+
+    watcher
+        .watch(std::path::Path::new(&path), RecursiveMode::NonRecursive)
+        .map_err(|e| format!("监听文件失败: {}", e))?;
+
+    let watcher = std::sync::Arc::new(Mutex::new(Some(watcher)));
+    *FILE_WATCHER.lock().unwrap() = Some(watcher);
+
+    Ok(())
+}
+
+/// 🔴 停止文件监听
+#[tauri::command]
+fn stop_file_watch() -> Result<(), String> {
+    let mut guard = FILE_WATCHER.lock().unwrap();
+    *guard = None; // Drop the watcher, which stops watching
     Ok(())
 }
 
@@ -88,6 +148,7 @@ pub fn run() {
             exists,
             get_metadata,
             is_directory,
+            get_file_mtime,
             launch_new_instance,
             check_pandoc,
             export_to_word,
@@ -95,7 +156,9 @@ pub fn run() {
             open_with_default_app,
             open_with_print,
             open_in_browser,
-            frontend_ready,  // 🔴 在 lib.rs 中定义
+            frontend_ready,
+            start_file_watch,
+            stop_file_watch,
         ])
         .setup(move |app| {
             // 🔴 修复：不要立即设置 APP_INITIALIZED，等前端通知
@@ -107,6 +170,11 @@ pub fn run() {
                 println!("[minidoc] 首次启动检测到文件参数，暂存: {}", file_path);
                 // 暂存到全局变量，等 frontend_ready 命令触发
                 PENDING_FILE_PATH.lock().unwrap().replace(file_path.clone());
+            }
+
+            // 🔴 打开 DevTools（调试用）
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
             }
 
             Ok(())

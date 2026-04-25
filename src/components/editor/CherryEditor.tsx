@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import Cherry from 'cherry-markdown';
 import { save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
 // 使用官方 CSS 确保样式一致性
 import '../../styles/cherry-markdown-official.css';
 import '../../styles/cherry-sidebar.css';
@@ -16,12 +17,16 @@ interface CherryEditorProps {
 export function CherryEditor({ className = '' }: CherryEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Cherry | null>(null);
-  // 🔴 关键：标志位，防止 setValue 触发 afterChange 循环
-  const isUpdatingFromStore = useRef(false);
+
+  // 🔴 记录每个文件的滚动位置
+  const scrollPositionsRef = useRef<Map<string, { editor: number; preview: number }>>(new Map());
+  // 🔴 待恢复的滚动位置（由 useEffect 设置，由 afterChange 回调执行恢复）
+  const pendingScrollRestore = useRef<{ editor: number; preview: number } | null>(null);
 
   const currentFile = useFileStore(state => state.currentFile);
   const updateContent = useFileStore(state => state.updateContent);
   const { options, syncWithSettings, isPreviewOnly, savedEditorWidth, setSavedEditorWidth } = useEditorStore();
+  const reloadVersion = useFileStore(state => state.reloadVersion);
   const { success, error } = useToast();
 
   // 🔴 自定义导出函数：Cherry.getHtml() + 隐藏 iframe + 固定宽度截图
@@ -330,6 +335,8 @@ ${htmlContent}
             lineNumbers: options.showLineNumbers,
             lineWrapping: true, // 固定启用自动换行
           },
+          convertWhenPaste: true,
+          keepDocumentScrollAfterInit: false
         },
         toolbars: {
           toolbar: [
@@ -436,12 +443,22 @@ ${htmlContent}
         },
         callback: {
           afterChange: (markdown: string) => {
-            // 🔴 关键：如果是从 store 更新的，跳过回调，避免循环
-            if (isUpdatingFromStore.current) {
-              console.log('[CherryEditor] 跳过 afterChange（来自 store 更新）');
-              return;
+            // 🔴 外部修改加载后，Cherry 渲染完成，恢复滚动位置
+            if (pendingScrollRestore.current) {
+              const cherryContainer = containerRef.current?.querySelector('.cherry') as HTMLElement;
+              const editorScrollEl = cherryContainer?.querySelector('.cherry-editor .CodeMirror-scroll') as HTMLElement;
+              const previewerEl = cherryContainer?.querySelector('.cherry-previewer') as HTMLElement;
+              const pos = pendingScrollRestore.current;
+              // 🔴 延迟等 DOM 高度计算完成
+              setTimeout(() => {
+                if (editorScrollEl) editorScrollEl.scrollTop = pos.editor;
+                if (previewerEl) previewerEl.scrollTop = pos.preview;
+                console.log('[CherryEditor] afterChange: 恢复滚动位置', pos);
+              }, 200);
+              pendingScrollRestore.current = null;
             }
-            console.log('[CherryEditor] afterChange 用户编辑，更新 store');
+
+            // 用户编辑时，更新 store
             updateContent(markdown);
           },
         },
@@ -451,35 +468,91 @@ ${htmlContent}
       });
 
       editorRef.current = editor;
+      // 🔴 拦截预览区域链接点击，在系统浏览器打开
+      const previewer = containerRef.current?.querySelector('.cherry-previewer');
+      if (previewer) {
+        const handleLinkClick = (e: Event) => {
+          const target = e.target as HTMLElement;
+          const link = target.closest('a');
+          if (link && link.href) {
+            const href = link.href;
+            // 仅拦截外部链接
+            if (href.startsWith('http://') || href.startsWith('https://')) {
+              e.preventDefault();
+              e.stopPropagation();
+              open(href).catch(err => console.error('[Link] 打开失败:', err));
+            }
+          }
+        };
+        previewer.addEventListener('click', handleLinkClick);
+        // 保存处理函数引用用于清理
+        (previewer as any)._linkClickHandler = handleLinkClick;
+      }
+
       console.log('Cherry editor initialized');
     } catch (error) {
       console.error('Failed to initialize Cherry editor:', error);
     }
 
     return () => {
+      // 清理链接点击事件监听
+      const previewer = containerRef.current?.querySelector('.cherry-previewer');
+      if (previewer && (previewer as any)._linkClickHandler) {
+        previewer.removeEventListener('click', (previewer as any)._linkClickHandler);
+        delete (previewer as any)._linkClickHandler;
+      }
       editorRef.current?.destroy();
     };
   }, []);
 
-  // 🔴 修复：监听 currentFile?.path 变化，每次切换文件都强制重新加载内容
+  // 🔴 修复：监听 path 变化（切换文件） + reloadVersion 变化（侧边栏强制刷新）
+  // reloadVersion 只在侧边栏点击时 +1，用户编辑时不变化 → 避免编辑时闪烁
+  const prevFilePathRef = useRef<string>('');
+
   useEffect(() => {
-    if (editorRef.current && currentFile) {
-      console.log('[CherryEditor] 文件切换，重新加载内容:', currentFile.path, '长度:', currentFile.content.length);
+    if (!editorRef.current || !currentFile) return;
 
-      // 🔴 关键：设置标志位，防止 afterChange 回调
-      isUpdatingFromStore.current = true;
+    const cherryContainer = containerRef.current?.querySelector('.cherry') as HTMLElement;
+    const editorScrollEl = cherryContainer?.querySelector('.cherry-editor .CodeMirror-scroll') as HTMLElement;
+    const previewerEl = cherryContainer?.querySelector('.cherry-previewer') as HTMLElement;
 
-      try {
-        editorRef.current.setValue(currentFile.content);
-      } finally {
-        // 🔴 增加延迟到 100ms，确保 afterChange 回调完成后再重置
-        setTimeout(() => {
-          isUpdatingFromStore.current = false;
-          console.log('[CherryEditor] 标志位已重置');
-        }, 100);
-      }
+    const prevPath = prevFilePathRef.current;
+    const isSameFile = prevPath === currentFile.path;
+
+    // 🔴 保存旧文件的滚动位置（切换文件时）
+    if (prevPath && !isSameFile) {
+      const positions = {
+        editor: editorScrollEl?.scrollTop || 0,
+        preview: previewerEl?.scrollTop || 0,
+      };
+      scrollPositionsRef.current.set(prevPath, positions);
     }
-  }, [currentFile?.path]);
+
+    // 🔴 记录 setValue 前的滚动位置
+    const positionsBeforeSet = isSameFile ? {
+      editor: editorScrollEl?.scrollTop || 0,
+      preview: previewerEl?.scrollTop || 0,
+    } : null;
+
+    // 🔴 确定要恢复的滚动位置
+    let positionsToRestore: { editor: number; preview: number };
+    if (isSameFile) {
+      positionsToRestore = positionsBeforeSet!;
+    } else {
+      const saved = scrollPositionsRef.current.get(currentFile.path);
+      positionsToRestore = saved || { editor: 0, preview: 0 };
+    }
+
+    console.log('[CherryEditor] setValue:', currentFile.path, 'sameFile:', isSameFile, 'restore:', positionsToRestore);
+
+    // 🔴 设置待恢复位置，afterChange 回调会在 Cherry 渲染完成后执行恢复
+    pendingScrollRestore.current = positionsToRestore;
+
+    editorRef.current.setValue(currentFile.content);
+
+    // 记录当前文件路径
+    prevFilePathRef.current = currentFile.path;
+  }, [currentFile?.path, reloadVersion]);
 
   useEffect(() => {
     if (!editorRef.current) return;

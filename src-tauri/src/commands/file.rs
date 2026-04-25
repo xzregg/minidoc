@@ -669,6 +669,30 @@ pub async fn is_directory(path: String) -> Result<bool, String> {
     Ok(path_obj.is_dir())
 }
 
+/// 获取文件的最后修改时间（秒级 Unix 时间戳）
+#[tauri::command]
+pub async fn get_file_mtime(path: String) -> Result<i64, String> {
+    let absolute_path = to_absolute(&path)
+        .map_err(|e| FileError::Other(e).to_string())?;
+
+    let path_obj = Path::new(&absolute_path);
+    if !path_obj.exists() {
+        return Err(FileError::NotFound(path).to_string());
+    }
+
+    let metadata = fs::metadata(&absolute_path)
+        .map_err(|e| format!("获取文件元数据失败: {}", e))?;
+
+    let mtime = metadata
+        .modified()
+        .map_err(|e| format!("获取修改时间失败: {}", e))?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("时间计算失败: {}", e))?
+        .as_secs();
+
+    Ok(mtime as i64)
+}
+
 /// 🔴 用系统默认浏览器打开 HTML 文件（用于 PDF 导出）
 ///
 /// macOS: open 命令

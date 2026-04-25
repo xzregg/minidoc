@@ -54,6 +54,29 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
     console.log('[FileTree] 初始化完成，currentDirectory:', currentDirectory);
   }, [currentDirectory]);
 
+  // 🔴 保存/恢复侧边栏滚动位置
+  useEffect(() => {
+    const prevDir = prevDirectoryRef.current;
+    const container = sidebarScrollRef.current;
+    if (!container) return;
+
+    // 保存上一个目录的滚动位置
+    if (prevDir) {
+      sidebarScrollPosRef.current.set(prevDir, container.scrollTop);
+    }
+
+    // 恢复当前目录的滚动位置（延迟确保 DOM 已渲染）
+    const savedScroll = sidebarScrollPosRef.current.get(effectivePath || '');
+    if (savedScroll !== undefined) {
+      setTimeout(() => {
+        container.scrollTop = savedScroll;
+        console.log('[FileTree] 恢复侧边栏滚动位置:', effectivePath, savedScroll);
+      }, 100);
+    }
+
+    prevDirectoryRef.current = effectivePath || null;
+  }, [effectivePath]);
+
   // 目录状态管理
   const [directoryStates, setDirectoryStates] = useState<Map<string, DirectoryState>>(new Map());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -78,7 +101,11 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
   // 使用 ref 避免递归调用
   const isLoadingRef = useRef<Map<string, boolean>>(new Map());
   const treeNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // 🔴 新增：侧边栏滚动位置记录
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const sidebarScrollPosRef = useRef<Map<string, number>>(new Map());
+  const prevDirectoryRef = useRef<string | null>(null);
   const lastLoadedPathRef = useRef<string | null>(null);
 
   // 暴露方法给父组件
@@ -170,7 +197,7 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
       // 滚动到目标文件
       setTimeout(() => {
         const targetElement = treeNodeRefs.current.get(filePath);
-        if (targetElement && scrollContainerRef.current) {
+        if (targetElement && sidebarScrollRef.current) {
           targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           // 添加高亮动画
           targetElement.classList.add('highlight-pulse');
@@ -541,6 +568,27 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
   }, []);
 
   /**
+   * 🔴 新增：在系统文件管理器中打开目录
+   */
+  const openInFileManager = useCallback(async (item: FileSystemItem) => {
+    if (!isTauri()) {
+      addToast({ type: 'error', message: '当前不在 Tauri 环境' });
+      return;
+    }
+
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell');
+      const pathToOpen = item.type === 'directory' ? item.path : item.path.substring(0, item.path.lastIndexOf('/'));
+      await open(pathToOpen);
+      addToast({ type: 'success', message: `已在文件管理器中打开: ${pathToOpen.split('/').pop()}` });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      addToast({ type: 'error', message: `打开失败: ${errorMessage}` });
+    }
+    setContextMenu(null);
+  }, [addToast]);
+
+  /**
    * 🔴 新增：处理删除
    */
   const handleDelete = useCallback(async (item: FileSystemItem) => {
@@ -606,38 +654,25 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
 
     if (item.type !== 'file') return;
 
-    // 检查当前文件是否已修改，如果修改了需要提示保存
+    // 🔴 Sublime 风格：切换文件时自动保存未保存的修改，不弹窗
     if (currentFile?.modified && currentFile.path !== item.path) {
-      const shouldSave = window.confirm(
-        `当前文件 "${currentFile.name}" 未保存，是否保存后再切换？\n\n点击"确定"保存并切换\n点击"取消"放弃修改并切换`
-      );
-
-      if (shouldSave) {
-        // 保存当前文件
-        try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          await invoke('write_file', {
-            path: currentFile.path,
-            content: currentFile.content,
-          });
-          addToast({
-            type: 'success',
-            message: `文件已保存: ${currentFile.name}`,
-          });
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          addToast({
-            type: 'error',
-            message: `保存失败: ${errorMessage}`,
-          });
-          return; // 保存失败，不切换文件
-        }
+      try {
+        const { invoke: invokeSave } = await import('@tauri-apps/api/core');
+        await invokeSave('write_file', {
+          path: currentFile.path,
+          content: currentFile.content,
+        });
+        console.log('[FileTree] 自动保存未保存的修改:', currentFile.path);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        addToast({
+          type: 'error',
+          message: `保存失败: ${errorMessage}`,
+        });
+        // 保存失败不切换文件
+        return;
       }
     }
-
-    // 🔴 修复：不再使用缓存，每次都从磁盘读取最新内容
-    // 避免缓存和 store 不同步的问题
-    fileCache.delete(item.path);
 
     // 加载文件内容
     try {
@@ -648,18 +683,38 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
       const { invoke } = await import('@tauri-apps/api/core');
       console.log(`[FileTree] 调用 read_file: ${item.path}`);
 
-      const content = await invoke<string>('read_file', { path: item.path });
+      // 🔴 获取磁盘文件的修改时间
+      const diskMtime = await invoke<number>('get_file_mtime', { path: item.path });
+      const cachedMtime = currentFile?.path === item.path ? (currentFile.fileMtime ?? 0) : 0;
+
+      // 🔴 点击同一文件时，对比 mtime 判断是否有外部变化
+      if (currentFile?.path === item.path && diskMtime <= cachedMtime) {
+        console.log('[FileTree] 文件未变化（mtime 相同），跳过刷新');
+        return;
+      }
+
+      const diskContent = await invoke<string>('read_file', { path: item.path });
+
+      // 🔴 二次确认：内容也未变化，跳过（防御 mtime 精度问题）
+      if (currentFile?.path === item.path && diskContent === currentFile.content) {
+        // 更新 mtime 但不用重载
+        console.log('[FileTree] 内容一致，跳过刷新');
+        return;
+      }
+
+      console.log('[FileTree] 文件有外部变化，静默加载');
 
       // 缓存内容
-      fileCache.set(item.path, content);
+      fileCache.set(item.path, diskContent);
 
-      console.log(`[FileTree] 文件加载成功，内容长度: ${content.length}`);
+      console.log(`[FileTree] 文件加载成功，内容长度: ${diskContent.length}`);
 
       openFile({
         path: item.path,
         name: item.name,
-        content,
+        content: diskContent,
         modified: false,
+        fileMtime: diskMtime,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -892,7 +947,7 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
 
   return (
     <>
-      <div ref={scrollContainerRef} className="h-full overflow-y-auto">
+      <div ref={sidebarScrollRef} className="h-full overflow-y-auto">
         <style>{`
           .highlight-pulse {
             animation: pulse-highlight 2s ease-in-out;
@@ -922,6 +977,12 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
           className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[150px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          <button
+            onClick={() => openInFileManager(contextMenu.item)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <span>📂</span> 在文件管理器中打开
+          </button>
           <button
             onClick={() => {
               setRenamingPath(contextMenu.item.path);
