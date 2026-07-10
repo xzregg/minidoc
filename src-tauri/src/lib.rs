@@ -116,6 +116,8 @@ fn get_file_path_from_args() -> Option<String> {
     }
 }
 
+/// （多屏幕逻辑已移到前端处理：外部打开文件总是新建窗口）
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 检测命令行参数
@@ -153,6 +155,7 @@ pub fn run() {
             append_file,
             create_file,
             delete_file,
+            trash_file,
             rename_file,
             create_directory,
             list_files,
@@ -173,15 +176,12 @@ pub fn run() {
             start_file_watch,
             stop_file_watch,
         ])
-        .setup(move |app| {
-            // 🔴 修复：不要立即设置 APP_INITIALIZED，等前端通知
-            // APP_INITIALIZED.store(true, Ordering::Relaxed);
+        .setup(move |_app| {
             println!("[minidoc] setup 完成，file_arg: {:?}", file_arg_for_setup);
 
             // 🔴 存储 pending_file_path，等前端准备好后再发送
             if let Some(file_path) = &file_arg_for_setup {
                 println!("[minidoc] 首次启动检测到文件参数，暂存: {}", file_path);
-                // 暂存到全局变量，等 frontend_ready 命令触发
                 PENDING_FILE_PATH.lock().unwrap().replace(file_path.clone());
             }
 
@@ -220,9 +220,7 @@ pub fn run() {
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|_| url.to_string());
 
-                    // 🔴 修复：根据 APP_INITIALIZED 判断
                     if APP_INITIALIZED.load(Ordering::Relaxed) {
-                        // 前端已准备好，直接发送事件
                         println!("[minidoc] 前端已准备好，发送 file-opened-external: {}", path_str);
                         app_handle.emit("file-opened-external", &path_str).ok();
                     } else {

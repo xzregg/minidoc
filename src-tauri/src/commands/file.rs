@@ -348,6 +348,36 @@ pub async fn delete_file(path: String) -> Result<(), String> {
     }
 }
 
+/// 🔴 移动文件/目录到回收站（跨平台）
+#[tauri::command]
+pub async fn trash_file(path: String) -> Result<(), String> {
+    eprintln!("[MiniDoc] trash_file called with path: {}", path);
+
+    let absolute_path = to_absolute(&path)
+        .map_err(|e| {
+            eprintln!("[MiniDoc] to_absolute failed: {}", e);
+            FileError::Other(e)
+        })?;
+
+    eprintln!("[MiniDoc] absolute_path: {}", absolute_path);
+
+    let path_obj = Path::new(&absolute_path);
+
+    if !path_obj.exists() {
+        return Err(FileError::NotFound(path).to_string());
+    }
+
+    // 使用 trash crate 移动到回收站
+    trash::delete(&absolute_path)
+        .map_err(|e| {
+            eprintln!("[MiniDoc] trash failed: {}", e);
+            format!("移动到回收站失败: {}", e)
+        })?;
+
+    eprintln!("[MiniDoc] Successfully moved to trash: {}", absolute_path);
+    Ok(())
+}
+
 /// 重命名文件或目录
 #[tauri::command]
 pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {

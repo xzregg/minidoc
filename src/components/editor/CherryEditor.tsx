@@ -29,7 +29,7 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
   const reloadVersion = useFileStore(state => state.reloadVersion);
   const { success, error } = useToast();
 
-  // 🔴 自定义导出函数：Cherry.getHtml() + 隐藏 iframe + 固定宽度截图
+  // 🔴 图片导出：使用 html2canvas 截图
   const handleExportImage = async () => {
     const cherry = editorRef.current;
     if (!cherry) return;
@@ -58,9 +58,9 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
         return;
       }
 
-      // 🔴 创建隐藏 iframe，渲染完整 HTML（固定宽度 800px）
+      // 🔴 创建隐藏 iframe，渲染完整 HTML（固定宽度 1200px 改善右边显示不全）
       const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:9999px;visibility:hidden;';
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1200px;height:9999px;visibility:hidden;';
       document.body.appendChild(iframe);
 
       const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
@@ -78,13 +78,7 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
 <head>
   <meta charset="UTF-8">
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      padding: 40px;
-      width: 800px;
-      line-height: 1.6;
-      background: white;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 60px; width: 1200px; line-height: 1.6; background: white; box-sizing: border-box; }
     pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
     code { background: #f5f5f5; padding: 2px 6px; border-radius: 2px; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
@@ -106,11 +100,11 @@ ${htmlContent}
       iframeDoc.close();
 
       // 等待 iframe 渲染完成
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const iframeBody = iframeDoc.body;
       const fullHeight = iframeBody.scrollHeight;
-      console.log('[Export] iframe 尺寸: 800 x', fullHeight);
+      console.log('[Export] iframe 尺寸: 1200 x', fullHeight);
 
       // 动态加载 html2canvas
       const html2canvasModule = await import('html2canvas');
@@ -122,9 +116,9 @@ ${htmlContent}
         useCORS: true,
         scrollY: 0,
         scrollX: 0,
-        width: 800,
+        width: 1200,
         height: fullHeight,
-        windowWidth: 800,
+        windowWidth: 1200,
         windowHeight: fullHeight,
         scale: 1,
         backgroundColor: '#ffffff',
@@ -156,21 +150,50 @@ ${htmlContent}
     if (!cherry) return;
 
     try {
-      const filePath = await save({
-        filters: [{ name: 'HTML', extensions: ['html'] }],
-        defaultPath: currentFile?.name?.replace('.md', '') || 'untitled',
-      });
-
-      if (!filePath) return;
-
       const htmlContent = cherry.getHtml();
+      console.log('[Export] HTML 内容长度:', htmlContent.length);
 
-      // 🔴 修复：使用 Rust backend 写入文件
-      await invoke('write_file', {
-        path: filePath,
-        content: htmlContent,
-      });
-      success(`已导出 HTML: ${filePath.split('/').pop()}`);
+      if (!htmlContent || htmlContent.length < 50) {
+        error('无法获取预览内容，内容可能为空');
+        return;
+      }
+
+      // 创建完整 HTML 文档（与 PDF 相同，但不包含打印脚本）
+      const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>HTML 导出 - ${currentFile?.name || 'untitled'}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+    pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 2px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    img { max-width: 100%; }
+    blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 16px; color: #666; }
+    h1, h2, h3 { margin-top: 24px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+${htmlContent}
+</body>
+</html>`;
+
+      // 保存到临时目录
+      const tempDir = '/tmp';
+      const tempFileName = `minidoc-export-${Date.now()}.html`;
+      const tempPath = `${tempDir}/${tempFileName}`;
+
+      await invoke('write_file', { path: tempPath, content: fullHtml });
+      console.log('[Export] 临时 HTML 已保存:', tempPath);
+
+      // 用浏览器打开
+      await invoke('open_in_browser', { path: tempPath });
+      console.log('[Export] 已在浏览器中打开');
+
+      success('请在浏览器中查看，可使用"另存为"保存');
     } catch (err) {
       console.error('[Export] 导出 HTML 失败:', err);
       error(`导出失败: ${err}`);

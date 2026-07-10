@@ -42,9 +42,16 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
     openFile,
     currentFile,
     setCurrentDirectory,
-    refreshVersion  // 🔴 新增：监听刷新计数器
+    refreshVersion,  // 🔴 新增：监听刷新计数器
+    triggerRefresh,  // 🔴 新增：刷新资源管理器
+    setHighlightedPath,  // 🔴 新增：高亮路径
   } = useFileStore();
   const { addToast } = useToastStore();
+
+  // 🔴 Toast 辅助函数
+  const success = (msg: string) => addToast({ type: 'success', message: msg });
+  const error = (msg: string) => addToast({ type: 'error', message: msg });
+  const warning = (msg: string) => addToast({ type: 'warning', message: msg });
 
   // 使用 store 中的路径
   const effectivePath = currentDirectory || initialPath;
@@ -91,7 +98,8 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    item: FileSystemItem;
+    item: FileSystemItem | null;  // null 表示空白区域
+    type: 'file' | 'folder' | 'empty';  // 点击目标类型
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     item: FileSystemItem;
@@ -226,11 +234,11 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
   /**
    * 加载目录内容
    */
-  const loadDirectory = useCallback(async (path: string, isRoot = false): Promise<FileSystemItem[]> => {
-    console.log(`[FileTree] loadDirectory 被调用: ${path}, isRoot: ${isRoot}`);
+  const loadDirectory = useCallback(async (path: string, isRoot = false, forceRefresh = false): Promise<FileSystemItem[]> => {
+    console.log(`[FileTree] loadDirectory 被调用: ${path}, isRoot: ${isRoot}, forceRefresh: ${forceRefresh}`);
 
-    // 防止重复加载
-    if (isLoadingRef.current.has(path) && isLoadingRef.current.get(path)) {
+    // 🔴 修复：强制刷新时绕过防重复加载
+    if (!forceRefresh && isLoadingRef.current.has(path) && isLoadingRef.current.get(path)) {
       console.log(`[FileTree] 跳过重复加载: ${path}`);
       return [];
     }
@@ -358,7 +366,7 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
           setDirectoryStates(new Map());
         }
 
-        const items = await loadDirectory(currentDirectory, true);
+        const items = await loadDirectory(currentDirectory, true, isForceRefresh);
 
         if (cancelled) return;
 
@@ -455,7 +463,9 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
 
     // 🔴 修复：检查文件名是否真的改变了
     const originalName = renamingPath.split('/').pop() || '';
-    const finalNewName = newName.endsWith('.md') ? newName : `${newName}.md`;
+    // 🔴 修复：文件夹不加 .md 后缀，文件加
+    const isDirectory = !originalName.endsWith('.md');
+    const finalNewName = isDirectory ? newName : (newName.endsWith('.md') ? newName : `${newName}.md`);
 
     if (originalName === finalNewName) {
       // 文件名没变，直接取消重命名状态，不调用后端
@@ -557,8 +567,23 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
   const handleContextMenu = useCallback((e: React.MouseEvent, item: FileSystemItem) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
+    const type = item.type === 'directory' ? 'folder' : 'file';
+    setContextMenu({ x: e.clientX, y: e.clientY, item, type });
   }, []);
+
+  /**
+   * 🔴 新增：空白区域右键菜单
+   */
+  const handleEmptyContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[FileTree] 空白区域右键，currentDirectory:', currentDirectory);
+    if (!currentDirectory) {
+      warning('请先选择一个目录');
+      return;
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, item: null, type: 'empty' });
+  }, [currentDirectory, warning]);
 
   /**
    * 🔴 新增：关闭右键菜单
@@ -568,25 +593,99 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
   }, []);
 
   /**
-   * 🔴 新增：在系统文件管理器中打开目录
+   * 🔴 新增：新建文件
    */
-  const openInFileManager = useCallback(async (item: FileSystemItem) => {
-    if (!isTauri()) {
-      addToast({ type: 'error', message: '当前不在 Tauri 环境' });
+  const handleNewFile = useCallback(async (targetPath: string) => {
+    if (!targetPath) {
+      warning('请先选择一个目录');
       return;
     }
 
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      const pathToOpen = item.type === 'directory' ? item.path : item.path.substring(0, item.path.lastIndexOf('/'));
-      await open(pathToOpen);
-      addToast({ type: 'success', message: `已在文件管理器中打开: ${pathToOpen.split('/').pop()}` });
+      const { invoke } = await import('@tauri-apps/api/core');
+      const { join } = await import('@tauri-apps/api/path');
+
+      const fileName = `untitled-${Date.now()}.md`;
+      const filePath = await join(targetPath, fileName);
+
+      await invoke('write_file', { path: filePath, content: '' });
+
+      openFile({ path: filePath, name: fileName, content: '', modified: false });
+      closeContextMenu();
+
+      // 🔴 如果 targetPath 不是当前根目录，需要展开该目录并加载
+      if (targetPath !== currentDirectory) {
+        // 展开目录
+        setExpandedFolders(prev => {
+          const newSet = new Set(prev);
+          newSet.add(targetPath);
+          return newSet;
+        });
+        // 加载该目录内容
+        await loadDirectory(targetPath, false, true);
+      } else {
+        // 根目录，直接刷新
+        triggerRefresh();
+      }
+
+      setHighlightedPath(filePath);
+
+      // 🔴 新建后直接进入重命名模式
+      setRenamingPath(filePath);
+      setNewName('untitled');
+
+      success(`已创建: ${fileName}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      addToast({ type: 'error', message: `打开失败: ${errorMessage}` });
+      error(`创建文件失败: ${errorMessage}`);
     }
-    setContextMenu(null);
-  }, [addToast]);
+  }, [openFile, triggerRefresh, setHighlightedPath, success, error, warning, closeContextMenu, currentDirectory, loadDirectory, setExpandedFolders]);
+
+  /**
+   * 🔴 新增：新建文件夹
+   */
+  const handleNewFolder = useCallback(async (targetPath: string) => {
+    if (!targetPath) {
+      warning('请先选择一个目录');
+      return;
+    }
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const { join } = await import('@tauri-apps/api/path');
+
+      const folderName = `新建文件夹-${Date.now()}`;
+      const folderPath = await join(targetPath, folderName);
+
+      await invoke('create_directory', { path: folderPath });
+
+      closeContextMenu();
+
+      // 🔴 如果 targetPath 不是当前根目录，需要展开该目录并加载
+      if (targetPath !== currentDirectory) {
+        // 展开目录
+        setExpandedFolders(prev => {
+          const newSet = new Set(prev);
+          newSet.add(targetPath);
+          return newSet;
+        });
+        // 加载该目录内容
+        await loadDirectory(targetPath, false, true);
+      } else {
+        // 根目录，直接刷新
+        triggerRefresh();
+      }
+
+      // 🔴 新建后直接进入重命名模式
+      setRenamingPath(folderPath);
+      setNewName('新建文件夹');
+
+      success(`已创建: ${folderName}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      error(`创建文件夹失败: ${errorMessage}`);
+    }
+  }, [triggerRefresh, success, error, warning, closeContextMenu, currentDirectory, loadDirectory, setExpandedFolders]);
 
   /**
    * 🔴 新增：处理删除
@@ -600,14 +699,15 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
     try {
       const { invoke } = await import('@tauri-apps/api/core');
 
-      await invoke('delete_file', { path: item.path });
+      // 🔴 使用 trash_file 移动到回收站，而不是 delete_file 直接删除
+      await invoke('trash_file', { path: item.path });
 
-      addToast({ type: 'success', message: `已删除: ${item.name}` });
+      addToast({ type: 'success', message: `已移至回收站: ${item.name}` });
 
       // 刷新目录
       const parentDir = item.path.substring(0, item.path.lastIndexOf('/'));
       const isParentRoot = parentDir === currentRoot;
-      const items = await loadDirectory(parentDir, isParentRoot);
+      const items = await loadDirectory(parentDir, isParentRoot, true);
       if (isParentRoot) {
         setRootItems(items);
       }
@@ -813,7 +913,8 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
             onDoubleClick={() => {
               if (isRenaming) return;
               if (isDirectory) {
-                handleDirectoryClick(item.path);
+                // 🔴 修复：双击文件夹展开/折叠，而不是加载目录
+                toggleFolder(item.path);
               } else {
                 handleFileDoubleClick(item);
               }
@@ -947,7 +1048,7 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
 
   return (
     <>
-      <div ref={sidebarScrollRef} className="h-full overflow-y-auto">
+      <div ref={sidebarScrollRef} className="h-full overflow-y-auto" onContextMenu={handleEmptyContextMenu}>
         <style>{`
           .highlight-pulse {
             animation: pulse-highlight 2s ease-in-out;
@@ -962,7 +1063,9 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
             {renderTreeNode(rootItems)}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+          <div
+            className="flex flex-col items-center justify-center h-full p-6 text-center"
+          >
             <File size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-sm text-gray-500 dark:text-gray-400">
               目录为空
@@ -977,28 +1080,97 @@ export const FileTree = forwardRef<FileTreeRef, FileTreeProps>(
           className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[150px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {/* 文件夹或空区域：显示新建选项 */}
+          {(contextMenu.type === 'folder' || contextMenu.type === 'empty') && (
+            <>
+              <button
+                onClick={() => {
+                  const targetPath = contextMenu.item?.path || currentDirectory;
+                  if (targetPath) handleNewFile(targetPath);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <span>📄</span> 新建文件
+              </button>
+              <button
+                onClick={() => {
+                  const targetPath = contextMenu.item?.path || currentDirectory;
+                  if (targetPath) handleNewFolder(targetPath);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <span>📁</span> 新建文件夹
+              </button>
+              <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+            </>
+          )}
+
+          {/* 所有类型：在文件管理器中打开 */}
           <button
-            onClick={() => openInFileManager(contextMenu.item)}
+            onClick={async () => {
+              const targetPath = contextMenu.item?.path || currentDirectory;
+              if (targetPath) {
+                try {
+                  const { invoke } = await import('@tauri-apps/api/core');
+                  // 🔴 使用 Rust 命令打开，而不是 shell open
+                  const pathToOpen = contextMenu.item?.type === 'directory'
+                    ? targetPath
+                    : targetPath.substring(0, targetPath.lastIndexOf('/'));
+                  await invoke('open_in_browser', { path: pathToOpen });
+                } catch (err) {
+                  error(`打开失败: ${err}`);
+                }
+              }
+              closeContextMenu();
+            }}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <span>📂</span> 在文件管理器中打开
           </button>
-          <button
-            onClick={() => {
-              setRenamingPath(contextMenu.item.path);
-              setNewName(contextMenu.item.name.replace('.md', ''));
-              setContextMenu(null);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <span>✏️</span> 重命名
-          </button>
-          <button
-            onClick={() => showDeleteConfirm(contextMenu.item)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-          >
-            <span>🗑️</span> 删除
-          </button>
+
+          {/* 文件或文件夹：显示重命名和删除 */}
+          {contextMenu.type === 'file' && contextMenu.item && (
+            <>
+              <button
+                onClick={() => {
+                  setRenamingPath(contextMenu.item!.path);
+                  setNewName(contextMenu.item!.name.replace('.md', ''));
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <span>✏️</span> 重命名
+              </button>
+              <button
+                onClick={() => showDeleteConfirm(contextMenu.item!)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                <span>🗑️</span> 删除
+              </button>
+            </>
+          )}
+
+          {/* 文件夹：显示重命名和删除 */}
+          {contextMenu.type === 'folder' && contextMenu.item && (
+            <>
+              <button
+                onClick={() => {
+                  setRenamingPath(contextMenu.item!.path);
+                  setNewName(contextMenu.item!.name);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <span>✏️</span> 重命名
+              </button>
+              <button
+                onClick={() => showDeleteConfirm(contextMenu.item!)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                <span>🗑️</span> 删除
+              </button>
+            </>
+          )}
         </div>
       )}
 

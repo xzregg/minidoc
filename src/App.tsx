@@ -159,8 +159,15 @@ function App() {
     const setupListener = async () => {
       const unlisten = await listen<string>('file-opened-external', async (event) => {
         const filePath = event.payload;
-        console.log('[App] 收到外部文件打开事件 (file-opened-external):', filePath);
-        enqueueFileDialog(filePath);
+        console.log('[App] 收到外部文件打开事件，直接新建窗口:', filePath);
+        // 🔴 多屏幕支持：外部打开文件总是新建窗口，macOS 会自动放到当前活跃屏幕
+        try {
+          await invoke<void>('launch_new_instance', { path: filePath });
+        } catch (err) {
+          console.error('[App] 打开新窗口失败:', err);
+          // 回退：在当前窗口打开
+          enqueueFileDialog(filePath);
+        }
       });
 
       cleanup = unlisten;

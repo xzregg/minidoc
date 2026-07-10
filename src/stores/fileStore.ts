@@ -85,7 +85,7 @@ export const useFileStore = create<FileState>((set, get) => ({
   },
 
   saveFile: async () => {
-    const { currentFile } = get();
+    const { currentFile, currentDirectory, openFile, setCurrentDirectory, setHighlightedPath, triggerRefresh } = get();
     if (!currentFile) return;
 
     const isTauriEnv = typeof window !== 'undefined' &&
@@ -96,19 +96,66 @@ export const useFileStore = create<FileState>((set, get) => ({
       try {
         set({ isSaving: true });
         const { invoke } = await import('@tauri-apps/api/core');
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { basename } = await import('@tauri-apps/api/path');
+
+        // 🔴 检测是否是虚拟路径（如 /untitled.md），需要弹出"另存为"
+        const isVirtualPath = currentFile.path.startsWith('/untitled') || !currentDirectory;
+
+        let savePath = currentFile.path;
+
+        if (isVirtualPath) {
+          // 弹出保存对话框
+          const userPath = await save({
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+            defaultPath: currentFile.name.replace('.md', ''),
+          });
+
+          if (!userPath) {
+            // 用户取消
+            set({ isSaving: false });
+            return;
+          }
+
+          savePath = userPath;
+        }
+
+        // 写入文件
         await invoke('write_file', {
-          path: currentFile.path,
+          path: savePath,
           content: currentFile.content,
         });
-        // 🔴 保存后更新 fileMtime，避免定时扫描误判为外部修改
-        const fileMtime = await invoke<number>('get_file_mtime', { path: currentFile.path });
-        set({
-          currentFile: { ...currentFile, modified: false, fileMtime },
-          isSaving: false,
-        });
+
+        // 🔴 保存后更新 mtime
+        const fileMtime = await invoke<number>('get_file_mtime', { path: savePath });
+        const fileName = await basename(savePath);
+
+        // 🔴 如果是另存为，更新文件路径和目录
+        if (isVirtualPath || savePath !== currentFile.path) {
+          const dirPath = savePath.substring(0, savePath.lastIndexOf('/'));
+          setCurrentDirectory(dirPath);
+          setHighlightedPath(savePath);
+
+          // 更新当前文件信息
+          openFile({
+            path: savePath,
+            name: fileName,
+            content: currentFile.content,
+            modified: false,
+            fileMtime,
+          });
+
+          triggerRefresh();
+        } else {
+          set({
+            currentFile: { ...currentFile, modified: false, fileMtime },
+            isSaving: false,
+          });
+        }
+
         useToastStore.getState().addToast({
           type: 'success',
-          message: `文件已保存: ${currentFile.name}`,
+          message: `文件已保存: ${fileName}`,
         });
       } catch (err) {
         set({ isSaving: false });
