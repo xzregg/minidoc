@@ -9,6 +9,7 @@ import '../../styles/cherry-sidebar.css';
 import { useFileStore } from '../../stores/fileStore';
 import { useEditorStore } from '../../stores/editorStore';
 import { useToast } from '../ui/Toast';
+import { resolveImageSrc } from '../../utils/markdownImage';
 
 interface CherryEditorProps {
   className?: string;
@@ -20,6 +21,8 @@ export function CherryEditor({ className = '' }: CherryEditorProps) {
 
   // 🔴 记录每个文件的滚动位置
   const scrollPositionsRef = useRef<Map<string, { editor: number; preview: number }>>(new Map());
+  // 🔴 当前文件所在目录（供 urlProcessor 解析相对图片路径）
+  const currentFileDirRef = useRef<string | null>(null);
   // 🔴 待恢复的滚动位置（由 useEffect 设置，由 afterChange 回调执行恢复）
   const pendingScrollRestore = useRef<{ editor: number; preview: number } | null>(null);
 
@@ -314,7 +317,12 @@ ${htmlContent}
         isPreviewOnly: false,
         engine: {
           global: {
-            urlProcessor: (url: string) => url,
+            urlProcessor: (url: string, type: string) => {
+              if (type === 'image') {
+                return resolveImageSrc(url, currentFileDirRef.current);
+              }
+              return url;
+            },
             htmlAttrWhiteList: 'part|slot',
             flowSessionContext: false,
           },
@@ -531,6 +539,11 @@ ${htmlContent}
   // 🔴 修复：监听 path 变化（切换文件） + reloadVersion 变化（侧边栏强制刷新）
   // reloadVersion 只在侧边栏点击时 +1，用户编辑时不变化 → 避免编辑时闪烁
   const prevFilePathRef = useRef<string>('');
+
+  // 🔴 保持当前文件目录最新，供 Cherry urlProcessor 使用（editor 只初始化一次）
+  currentFileDirRef.current = currentFile?.path
+    ? currentFile.path.substring(0, currentFile.path.lastIndexOf('/'))
+    : null;
 
   useEffect(() => {
     if (!editorRef.current || !currentFile) return;
