@@ -1,6 +1,6 @@
 # 窗口状态修复发布记录
 
-日期：2026-10-09。用户已明确授权打包并发布GitHub，含必要提交、push、版本tag与release。当前状态：0.1.6真实安装包已构建，测试工程师独立复核通过；等待正常push与网页release，尚未发布。GitHub CLI未登录，但用户现有Chrome GitHub会话已认证，可通过网页发布。
+日期：2026-10-09。用户已明确授权打包并发布GitHub，含必要提交、push、版本tag与release。当前状态：0.1.6真实安装包已构建，测试工程师独立复核通过；代码已正常push，网页release等待上传权限，尚未发布。GitHub CLI未登录，但用户现有Chrome GitHub会话已认证，可通过网页发布。
 
 ## 版本与仓库核验
 
@@ -19,7 +19,8 @@
 - [x] 测试工程师核验版本、架构、DMG与包内二进制、SHA256（严格签名与16个Mach-O文件节一致）
 - [x] 提交范围审核：仅本次修复、四处版本及window-state交付文档；安装包不加入源码
 - [x] GitHub网页认证可用（CLI尚未登录，不读取或导出浏览器凭据）
-- [ ] 正常push、创建新release并上传校验后的安装包
+- [x] 正常push master：源码提交36eefaa432323c0829760ad829bebd12b69d5203
+- [ ] 创建新release并上传校验后的安装包（文件上传权限阻塞）
 - [ ] release assets重新下载与摘要一致
 
 ## 真实桌面验证限制
@@ -32,3 +33,11 @@
 - app ZIP：`src-tauri/target/release/bundle/macos/minidoc-app_0.1.6_aarch64.app.zip`，6095062 bytes，SHA256 `d76653d619a0063a11c164ccbc3f96eb379d0f6025ff26b90c51c74035714a78`。
 - 摘要：`src-tauri/target/release/bundle/SHA256SUMS.txt`。
 - 最终包使用完整ad-hoc签名；无Developer ID与公证。第一轮只有linker签名的包已被替换，不上传。
+
+## 当前发布阻塞与恢复
+
+- 正常git push成功：远端master从644bf0c推进至36eefaa，未force。
+- GitHub CLI未登录；Chrome已有认证会话，发布表单已选择新tag v0.1.6及明确目标提交36eefaa，标题和说明已填写，尚未点击Publish。
+- CUA上传3份安装包时被扩展权限拒绝：ChatGPT浏览器扩展未启用Allow access to file URLs。没有擅自修改权限。原生文件选择器替代因用户正在操作Chrome而被工具保护拒绝，不继续干扰。
+- 恢复方式二选一：用户完成gh auth login，或在chrome://extensions的ChatGPT扩展详情中启用Allow access to file URLs。随后上传上述三份最终文件，发布并重新下载校验摘要。
+- 发布表单已保留在浏览器，release URL预计https://github.com/xzregg/minidoc/releases/tag/v0.1.6；此URL尚未发布，不能作为发布成功证据。

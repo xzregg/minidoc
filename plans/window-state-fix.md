@@ -25,3 +25,5 @@
 ## 0.1.6 发布执行
 
 用户已授权打包并发布GitHub。版本0.1.6，macOS arm64最终app／DMG打包与测试工程师独立包核验通过，发布负责人lead执行必要提交、正常push与新release上传。真实桌面仍待验收，无Developer ID签名或公证；详见docs/window-state-release.md。
+
+发布进度：源码提交36eefaa已正常push master；最终包准备完成。GitHub release尚未创建，等待CLI登录或Chrome扩展文件上传权限，详见发布记录。
