@@ -3,6 +3,8 @@
 mod commands;
 mod error;
 mod utils;
+mod window_state;
+mod window_geometry;
 
 use commands::file::*;
 use commands::export::*;
@@ -129,7 +131,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .manage(window_state::Limits::default())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(window_state::flags())
+                .skip_initial_state("main")
+                .build(),
+        )
         // 仅主实例注册 single-instance
         .plugin(if file_arg.is_none() {
             tauri_plugin_single_instance::init(|app_handle, argv, _cwd| {
@@ -177,6 +185,9 @@ pub fn run() {
             stop_file_watch,
         ])
         .setup(move |_app| {
+            if let Some(window) = _app.get_webview_window("main") {
+                window_state::restore(&window.as_ref().window());
+            }
             println!("[minidoc] setup 完成，file_arg: {:?}", file_arg_for_setup);
 
             // 🔴 存储 pending_file_path，等前端准备好后再发送
@@ -187,22 +198,24 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|window, event| match event {
-            tauri::WindowEvent::CloseRequested { .. } => {}
-            tauri::WindowEvent::DragDrop(ref drop_event) => {
-                let app_handle = window.app_handle();
-                match *drop_event {
-                    tauri::DragDropEvent::Drop { ref paths, .. } => {
-                        println!("[minidoc] 拖拽放下，paths: {:?}", paths);
-                        if let Some(first_path) = paths.first() {
-                            let path_str: String = first_path.to_string_lossy().to_string();
-                            app_handle.emit("drag-drop-opened", &path_str).ok();
+        .on_window_event(|window, event| {
+            window_state::handle_event(window, event);
+            match event {
+                tauri::WindowEvent::DragDrop(ref drop_event) => {
+                    let app_handle = window.app_handle();
+                    match *drop_event {
+                        tauri::DragDropEvent::Drop { ref paths, .. } => {
+                            println!("[minidoc] 拖拽放下，paths: {:?}", paths);
+                            if let Some(first_path) = paths.first() {
+                                let path_str: String = first_path.to_string_lossy().to_string();
+                                app_handle.emit("drag-drop-opened", &path_str).ok();
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
+                _ => {}
             }
-            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
