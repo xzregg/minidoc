@@ -1,6 +1,6 @@
 # 0.1.6 发布包独立复核
 
-日期：2026-10-09。负责人：QA。状态：[待验收]；本地最终发布包完整性检查通过，可上传 GitHub。GitHub 资产验证待上传后补录。没有启动应用、执行联网测试、修改代码／版本或提交。
+日期：2026-10-09。负责人：QA。状态：[已完成]（包完整性与远端交付）；本地最终发布包和 GitHub 资产验证通过。没有启动应用、执行联网应用测试、修改代码／版本或提交；远端验证只读取公开发布信息并下载授权发布的资产。真实 GUI 产品验收仍待验证。
 
 ## 最终产物与摘要
 
@@ -29,6 +29,11 @@ QA 独立 `shasum -a 256` 与开发及 `bundle/SHA256SUMS.txt` 完全一致。�
 
 ## 发布资产核验
 
-状态：远端未验证，等待上传权限恢复。代码已提交并推送到 `36eefaa432323c0829760ad829bebd12b69d5203`。负责人反馈 GitHub 命令行缺少认证；网页上传受扩展本地文件权限与原生选择器保护阻断，已向用户请求恢复认证或权限。QA 没有远端发布资产可供核验，不宣称安装包已发布。
+状态：通过。用户启用网页文件权限后，负责人完成正式发布：[v0.1.6](https://github.com/xzregg/minidoc/releases/tag/v0.1.6)。公开 API 确认 `draft=false`、`prerelease=false`，发布时间为 2026-10-09 10:22:38（上海时间）。
 
-上传完成后应核对 `v0.1.6` tag 目标提交、发布版本、资产名称、字节数、GitHub SHA256 digest 或下载文件摘要，与上表及 SHA256SUMS 一致，再标记资产交付通过。
+- QA 独立执行 `git ls-remote --tags origin refs/tags/v0.1.6`：目标为 `36eefaa432323c0829760ad829bebd12b69d5203`，与修复源码提交一致。
+- 三项资产存在；公开 API 的名称、字节数和 SHA256 digest 与本地最终发布包一致。
+- 三项资产重新下载至 `/tmp/minidoc-v0.1.6-qa.dmg`、`/tmp/minidoc-v0.1.6-qa.app.zip`、`/tmp/minidoc-v0.1.6-qa-SHA256SUMS.txt`。下载后的 DMG 和 ZIP 字节数及 SHA256 均与上表完全一致；SHA256SUMS 与本地文件逐字节相同，196 字节，SHA256 为 `995e06eb5e2a2f451ac862bcd12a39c0b7dc4325ce70e7a9f798e467e0e9776a`。
+- 下载后再次读取公开 release API，三项资产的 ID、大小、摘要保持不变；公开工作流 API 确认旧发布运行 [37874280633](https://github.com/xzregg/minidoc/actions/runs/37874280633) 已 `completed/cancelled`，此次复核期间没有同名资产被替换。
+
+直接下载：[DMG](https://github.com/xzregg/minidoc/releases/download/v0.1.6/minidoc-app_0.1.6_aarch64.dmg)、[App ZIP](https://github.com/xzregg/minidoc/releases/download/v0.1.6/minidoc-app_0.1.6_aarch64.app.zip)、[SHA256SUMS](https://github.com/xzregg/minidoc/releases/download/v0.1.6/SHA256SUMS.txt)。
