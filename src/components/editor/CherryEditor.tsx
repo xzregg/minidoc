@@ -499,19 +499,47 @@ ${htmlContent}
       });
 
       editorRef.current = editor;
-      // 🔴 拦截预览区域链接点击，在系统浏览器打开
+      // 文档链接在当前编辑器打开，网页链接交给系统浏览器
       const previewer = containerRef.current?.querySelector('.cherry-previewer');
       if (previewer) {
         const handleLinkClick = (e: Event) => {
           const target = e.target as HTMLElement;
           const link = target.closest('a');
-          if (link && link.href) {
-            const href = link.href;
-            // 仅拦截外部链接
-            if (href.startsWith('http://') || href.startsWith('https://')) {
+          const href = link?.getAttribute('href')?.trim();
+          if (href) {
+            if (/^https?:\/\//i.test(href) || href.startsWith('//')) {
               e.preventDefault();
               e.stopPropagation();
-              open(href).catch(err => console.error('[Link] 打开失败:', err));
+              open(link!.href).catch(err => console.error('[Link] 打开失败:', err));
+            } else if (!/^[a-z][a-z\d+.-]*:/i.test(href) && /\.(md|markdown)$/i.test(href.split(/[?#]/)[0])) {
+              e.preventDefault();
+              e.stopPropagation();
+              const openDocument = async () => {
+                const baseDir = currentFileDirRef.current;
+                if (baseDir === null) throw new Error('请先保存当前文档，再打开相对链接');
+                const baseUrl = `file://${baseDir.split('/').map(encodeURIComponent).join('/')}/`;
+                const path = decodeURIComponent(new URL(href, baseUrl).pathname);
+                const store = useFileStore.getState();
+                if (store.currentFile?.path === path) return;
+                // 与侧边栏切换文件一致，先保存当前修改，保存失败则不切换
+                if (store.currentFile?.modified) {
+                  await invoke('write_file', {
+                    path: store.currentFile.path,
+                    content: store.currentFile.content,
+                  });
+                }
+                const content = await invoke<string>('read_file', { path });
+                const fileMtime = await invoke<number>('get_file_mtime', { path });
+                store.openFile({
+                  path,
+                  name: path.split('/').pop()!,
+                  content,
+                  modified: false,
+                  fileMtime,
+                });
+                store.setHighlightedPath(path);
+              };
+              openDocument().catch(err => error(`打开文档失败: ${err instanceof Error ? err.message : String(err)}`));
             }
           }
         };
